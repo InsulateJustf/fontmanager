@@ -307,3 +307,32 @@ def generate_filename(family_name: str, style_name: str, ext: str) -> str:
     safe_family = _sanitize_filename(family_name)
     safe_style = _sanitize_filename(style_name)
     return "{}-{}.{}".format(safe_family, safe_style, ext)
+
+
+def get_ttc_subfonts(filepath: str) -> list:
+    """Get metadata for all sub-fonts in a TTC file.
+
+    Returns list of dicts: {index, family_name, style_name}
+    """
+    from fontTools.ttLib import TTCollection
+
+    ttc = TTCollection(filepath)
+    results = []
+    try:
+        for i, font in enumerate(ttc):
+            name_table = font.get("name")
+            if name_table is None:
+                results.append({"index": i, "family_name": "Sub-font {}".format(i), "style_name": ""})
+                continue
+
+            family = (
+                _get_name(name_table, 1, prefer_chinese=True)
+                or _get_name(name_table, 16, prefer_chinese=True)
+                or "Sub-font {}".format(i)
+            )
+            style = _get_name(name_table, 2, prefer_chinese=False) or ""
+            results.append({"index": i, "family_name": family, "style_name": style})
+    finally:
+        ttc.close()
+
+    return results

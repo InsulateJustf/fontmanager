@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FontManager — 字体管理</title>
-    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
     <div class="container">
@@ -69,6 +69,36 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <!-- Preview Modal -->
+    <div id="previewModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="previewTitle">字体预览</h2>
+                <button type="button" id="previewClose" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Sub-font selector (shown for TTC files) -->
+                <div id="subfontRow" class="preview-subfont-row" style="display:none;">
+                    <label>字型：</label>
+                    <select id="subfontSelect" class="preview-select"></select>
+                </div>
+                <div class="preview-controls">
+                    <input type="text" id="previewText" class="preview-input"
+                           value="字体预览 FontPreview 123" placeholder="输入预览文字…">
+                    <div class="preview-size-row">
+                        <label>字号：</label>
+                        <input type="range" id="previewSize" min="12" max="120" value="36">
+                        <span id="previewSizeLabel">36px</span>
+                    </div>
+                </div>
+                <div id="previewArea" class="preview-area">
+                    字体预览 FontPreview 123
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=7"></script>
 </body>
 </html>

@@ -15,15 +15,24 @@
     var fontCount     = document.getElementById("fontCount");
     var refreshBtn    = document.getElementById("refreshBtn");
 
+    // Preview modal
+    var previewModal     = document.getElementById("previewModal");
+    var previewClose     = document.getElementById("previewClose");
+    var previewTitle     = document.getElementById("previewTitle");
+    var previewText      = document.getElementById("previewText");
+    var previewSize      = document.getElementById("previewSize");
+    var previewSizeLabel = document.getElementById("previewSizeLabel");
+    var previewArea      = document.getElementById("previewArea");
+    var subfontRow       = document.getElementById("subfontRow");
+    var subfontSelect    = document.getElementById("subfontSelect");
+
+    var fontFaceCounter = 0;
+    var currentPreviewFontId = null;
+
     // ─── Button → trigger hidden input ──────────────────────────────────────
 
-    fileBtn.addEventListener("click", function () {
-        fileInput.click();
-    });
-
-    folderBtn.addEventListener("click", function () {
-        folderInput.click();
-    });
+    fileBtn.addEventListener("click", function () { fileInput.click(); });
+    folderBtn.addEventListener("click", function () { folderInput.click(); });
 
     fileInput.addEventListener("change", function () {
         if (fileInput.files.length > 0) {
@@ -39,12 +48,12 @@
         }
     });
 
-    // ─── Block browser default drag-n-drop → navigate/download ─────────────
+    // ─── Block browser default drag-n-drop ──────────────────────────────────
 
     window.addEventListener("dragover", function (e) { e.preventDefault(); });
     window.addEventListener("drop",     function (e) { e.preventDefault(); });
 
-    // ─── Dropzone drag/drop ─────────────────────────────────────────────────
+    // ─── Dropzone ───────────────────────────────────────────────────────────
 
     var dragDepth = 0;
 
@@ -62,10 +71,7 @@
     dropzone.addEventListener("dragleave", function (e) {
         e.preventDefault();
         dragDepth--;
-        if (dragDepth <= 0) {
-            dragDepth = 0;
-            dropzone.classList.remove("dragover");
-        }
+        if (dragDepth <= 0) { dragDepth = 0; dropzone.classList.remove("dragover"); }
     });
 
     dropzone.addEventListener("drop", function (e) {
@@ -87,13 +93,8 @@
 
         for (var i = 0; i < fileList.length; i++) {
             var nm = fileList[i].name.toLowerCase();
-            var isFont = false;
             for (var j = 0; j < fontExts.length; j++) {
-                if (nm.endsWith(fontExts[j])) { isFont = true; break; }
-            }
-            if (isFont) {
-                fd.append("files", fileList[i]);
-                added++;
+                if (nm.endsWith(fontExts[j])) { fd.append("files", fileList[i]); added++; break; }
             }
         }
 
@@ -172,9 +173,121 @@
                 "<td>" + escapeHtml(f.format.toUpperCase()) + "</td>" +
                 "<td>" + fmtSize(f.file_size) + "</td>" +
                 "<td>" + fmtDate(f.created_at) + "</td>" +
-                '<td><button class="btn btn-danger" onclick="FM.del(' + f.id + ",'" + label.replace(/'/g, "\\'") + "')\">删除</button></td>";
+                '<td>' +
+                    '<button class="btn btn-info" onclick="FM.preview(' + f.id + ",'" + label.replace(/'/g, "\\'") + "','" + f.format + "')\">预览</button> " +
+                    '<button class="btn btn-success" onclick="FM.download(' + f.id + ')">下载</button> ' +
+                    '<button class="btn btn-danger" onclick="FM.del(' + f.id + ",'" + label.replace(/'/g, "\\'") + "')\">删除</button>" +
+                '</td>';
             fontTableBody.appendChild(tr);
         }
+    }
+
+    // ─── Preview ────────────────────────────────────────────────────────────
+
+    function preview(fontId, displayName, fontFormat) {
+        currentPreviewFontId = fontId;
+        previewTitle.textContent = "预览 — " + displayName;
+        previewText.value = "字体预览 FontPreview 123";
+        previewSize.value = 36;
+        previewSizeLabel.textContent = "36px";
+
+        // Reset sub-font selector
+        subfontSelect.innerHTML = "";
+        subfontRow.style.display = "none";
+
+        if (fontFormat === "ttc") {
+            // Load sub-font list for TTC
+            fetch("/api/fonts/" + fontId + "/subfonts")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.status === "ok" && data.subfonts) {
+                        var subs = data.subfonts;
+                        if (subs.length > 1) {
+                            // Show sub-font selector
+                            for (var i = 0; i < subs.length; i++) {
+                                var opt = document.createElement("option");
+                                opt.value = subs[i].index;
+                                var labelText = subs[i].family_name;
+                                if (subs[i].style_name) {
+                                    labelText += " — " + subs[i].style_name;
+                                }
+                                opt.textContent = labelText;
+                                subfontSelect.appendChild(opt);
+                            }
+                            subfontRow.style.display = "flex";
+                        }
+                        // Load first sub-font
+                        loadPreviewFont(fontId, 0);
+                    }
+                })
+                .catch(function () {
+                    // Fallback: load whole TTC
+                    loadPreviewFont(fontId, null);
+                });
+        } else {
+            // TTF/OTF: load directly
+            loadPreviewFont(fontId, null);
+        }
+
+        previewArea.style.fontSize = "36px";
+        previewArea.textContent = previewText.value;
+        previewModal.style.display = "flex";
+    }
+
+    function loadPreviewFont(fontId, subfontIndex) {
+        fontFaceCounter++;
+        var faceName = "PreviewFont_" + fontFaceCounter;
+        var fontUrl = "/api/fonts/" + fontId + "/file";
+        if (subfontIndex !== null && subfontIndex !== undefined) {
+            fontUrl += "?subfont=" + subfontIndex;
+        }
+
+        // Remove previous preview style
+        var oldStyle = document.getElementById("previewFontStyle");
+        if (oldStyle) oldStyle.remove();
+
+        var style = document.createElement("style");
+        style.id = "previewFontStyle";
+        style.textContent =
+            "@font-face {" +
+            "  font-family: '" + faceName + "';" +
+            "  src: url('" + fontUrl + "');" +
+            "}" +
+            ".preview-area {" +
+            "  font-family: '" + faceName + "', sans-serif;" +
+            "}";
+        document.head.appendChild(style);
+    }
+
+    // Sub-font selector change
+    subfontSelect.addEventListener("change", function () {
+        var idx = parseInt(subfontSelect.value, 10);
+        loadPreviewFont(currentPreviewFontId, idx);
+    });
+
+    // Modal close
+    previewClose.addEventListener("click", function () {
+        previewModal.style.display = "none";
+    });
+
+    previewModal.querySelector(".modal-overlay").addEventListener("click", function () {
+        previewModal.style.display = "none";
+    });
+
+    previewText.addEventListener("input", function () {
+        previewArea.textContent = previewText.value || "字体预览 FontPreview 123";
+    });
+
+    previewSize.addEventListener("input", function () {
+        var size = previewSize.value + "px";
+        previewArea.style.fontSize = size;
+        previewSizeLabel.textContent = size;
+    });
+
+    // ─── Download ───────────────────────────────────────────────────────────
+
+    function download(fontId) {
+        window.open("/api/fonts/" + fontId + "/file?download=1", "_blank");
     }
 
     // ─── Delete ─────────────────────────────────────────────────────────────
@@ -190,7 +303,7 @@
             .catch(function (e) { alert("删除失败: " + e.message); });
     }
 
-    window.FM = { del: del };
+    window.FM = { del: del, preview: preview, download: download };
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 

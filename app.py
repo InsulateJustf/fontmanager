@@ -1,14 +1,15 @@
 """FontManager — Flask web application for font management."""
 
+import io
 import os
 import shutil
 import tempfile
 import argparse
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from waitress import serve
 
 import db
-from font_parser import parse_font, generate_filename, detect_format
+from font_parser import parse_font, generate_filename, detect_format, get_ttc_subfonts
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -57,7 +58,6 @@ def _process_single_file(file_storage):
         return {"filename": original_name, "status": "error",
                 "message": "Unsupported format: {}".format(ext)}
 
-    # Save to a temp file (NamedTemporaryFile auto-deletes on close)
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     tmp_path = tmp.name
     try:
@@ -85,7 +85,7 @@ def _process_single_file(file_storage):
             counter += 1
 
         shutil.move(tmp_path, dest_path)
-        tmp_path = None  # Prevent cleanup — file already moved
+        tmp_path = None
 
         file_size = os.path.getsize(dest_path)
         file_hash = db.compute_file_hash(dest_path)
@@ -136,6 +136,78 @@ def delete_font(font_id):
 
     return jsonify({"status": "ok",
                     "message": "Deleted: {} - {}".format(font["family_name"], font["style_name"])})
+
+
+@app.route("/api/fonts/<int:font_id>/file", methods=["GET"])
+def get_font_file(font_id):
+    """Serve font file for preview (inline) or download."""
+    font = db.get_font_by_id(font_id)
+    if font is None:
+        return jsonify({"status": "error", "message": "Font not found"}), 404
+
+    file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+    if not os.path.exists(file_path):
+        return jsonify({"status": "error", "message": "Font file missing"}), 404
+
+    # ?download=1 triggers attachment download
+    as_download = request.args.get("download") == "1"
+    if as_download:
+        download_name = font["original_filename"]
+        return send_file(file_path, as_attachment=True, download_name=download_name)
+
+    # ?subfont=N serves a specific sub-font from TTC as standalone TTF
+    subfont_index = request.args.get("subfont")
+    if subfont_index is not None and font["format"] == "ttc":
+        try:
+            subfont_index = int(subfont_index)
+        except ValueError:
+            return jsonify({"status": "error", "message": "Invalid subfont index"}), 400
+
+        from fontTools.ttLib import TTCollection
+        try:
+            ttc = TTCollection(file_path)
+            if subfont_index < 0 or subfont_index >= len(ttc):
+                return jsonify({"status": "error",
+                                "message": "Subfont index out of range (0-{})".format(len(ttc) - 1)}), 400
+
+            buf = io.BytesIO()
+            font_obj = ttc[subfont_index]
+            font_obj.save(buf)
+            buf.seek(0)
+            ttc.close()
+            return send_file(buf, mimetype="font/ttf")
+        except Exception as e:
+            return jsonify({"status": "error",
+                            "message": "Failed to extract subfont: {}".format(e)}), 500
+
+    # Otherwise serve inline (for @font-face preview)
+    mime_map = {"ttf": "font/ttf", "otf": "font/otf", "ttc": "font/collection"}
+    mime = mime_map.get(font["format"], "application/octet-stream")
+    return send_file(file_path, mimetype=mime)
+
+
+@app.route("/api/fonts/<int:font_id>/subfonts", methods=["GET"])
+def list_subfonts(font_id):
+    """List sub-fonts in a TTC file."""
+    font = db.get_font_by_id(font_id)
+    if font is None:
+        return jsonify({"status": "error", "message": "Font not found"}), 404
+
+    if font["format"] != "ttc":
+        return jsonify({"status": "ok", "subfonts": [
+            {"index": 0, "family_name": font["family_name"], "style_name": font["style_name"]}
+        ]})
+
+    file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+    if not os.path.exists(file_path):
+        return jsonify({"status": "error", "message": "Font file missing"}), 404
+
+    try:
+        subfonts = get_ttc_subfonts(file_path)
+        return jsonify({"status": "ok", "subfonts": subfonts})
+    except Exception as e:
+        return jsonify({"status": "error",
+                        "message": "Failed to read TTC: {}".format(e)}), 500
 
 
 def parse_args():
