@@ -9,21 +9,45 @@ document.addEventListener("DOMContentLoaded", () => {
     const emptyState = document.getElementById("emptyState");
     const refreshBtn = document.getElementById("refreshBtn");
 
+    // ─── Prevent browser default drag behavior globally ─────────────────────
+    // Without this, dropping a file on the page triggers a download/navigate.
+
+    document.addEventListener("dragover", (e) => {
+        e.preventDefault();
+    });
+
+    document.addEventListener("drop", (e) => {
+        e.preventDefault();
+    });
+
     // ─── Drop Zone ──────────────────────────────────────────────────────────
 
     dropzone.addEventListener("click", () => fileInput.click());
 
-    dropzone.addEventListener("dragover", (e) => {
+    dropzone.addEventListener("dragenter", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.classList.add("dragover");
     });
 
-    dropzone.addEventListener("dragleave", () => {
-        dropzone.classList.remove("dragover");
+    dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+    });
+
+    dropzone.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Only remove highlight when actually leaving the dropzone
+        if (!dropzone.contains(e.relatedTarget)) {
+            dropzone.classList.remove("dragover");
+        }
     });
 
     dropzone.addEventListener("drop", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.classList.remove("dragover");
         const files = e.dataTransfer.files;
         if (files.length > 0) {
@@ -34,7 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fileInput.addEventListener("change", () => {
         if (fileInput.files.length > 0) {
             uploadFiles(fileInput.files);
-            fileInput.value = ""; // Reset for re-selection
+            fileInput.value = "";
         }
     });
 
@@ -46,7 +70,6 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("files", file);
         }
 
-        // Show loading state
         uploadResults.style.display = "block";
         resultsList.innerHTML = '<div class="result-item"><span class="result-icon">⏳</span><span class="result-filename">正在上传和解析...</span></div>';
 
@@ -59,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (data.status === "ok") {
                 renderUploadResults(data.results);
-                loadFontList(); // Refresh font list
+                loadFontList();
             } else {
                 resultsList.innerHTML = `<div class="result-item error"><span class="result-icon">❌</span><span class="result-filename">${data.message || "Upload failed"}</span></div>`;
             }
@@ -89,7 +112,6 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const resp = await fetch("/api/fonts");
             const data = await resp.json();
-
             if (data.status === "ok") {
                 renderFontList(data.fonts);
             }
@@ -100,23 +122,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderFontList(fonts) {
         fontTableBody.innerHTML = "";
-
         if (fonts.length === 0) {
             emptyState.style.display = "block";
             return;
         }
-
         emptyState.style.display = "none";
-
         for (const font of fonts) {
             const tr = document.createElement("tr");
+            const safeName = escapeHtml(font.family_name + " - " + font.style_name);
             tr.innerHTML = `
                 <td>${escapeHtml(font.family_name)}</td>
                 <td>${escapeHtml(font.style_name)}</td>
                 <td>${escapeHtml(font.format.toUpperCase())}</td>
                 <td>${formatFileSize(font.file_size)}</td>
                 <td>${formatDate(font.created_at)}</td>
-                <td><button class="btn btn-danger btn-sm" onclick="deleteFont(${font.id}, '${escapeHtml(font.family_name)} - ${escapeHtml(font.style_name)}')">删除</button></td>
+                <td><button class="btn btn-danger btn-sm" onclick="deleteFont(${font.id}, '${safeName}')">删除</button></td>
             `;
             fontTableBody.appendChild(tr);
         }
@@ -128,11 +148,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!confirm(`确定要删除字体 "${displayName}" 吗？\n此操作将同时删除服务器上的字体文件。`)) {
             return;
         }
-
         try {
             const resp = await fetch(`/api/fonts/${id}`, { method: "DELETE" });
             const data = await resp.json();
-
             if (data.status === "ok") {
                 loadFontList();
             } else {
