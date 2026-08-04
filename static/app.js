@@ -81,7 +81,7 @@
         resultsList.innerHTML = "";
         for (var i = 0; i < results.length; i++) {
             var r = results[i];
-            var icon = r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : "❌";
+            var icon = r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : r.status === "skipped" ? "⏭️" : "❌";
             var el = document.createElement("div");
             el.className = "result-item " + r.status;
             el.innerHTML = '<span class="result-icon">' + icon + '</span><span class="result-filename">' + escapeHtml(r.filename) + '</span><span class="result-message">' + escapeHtml(r.message) + '</span>';

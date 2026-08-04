@@ -12,6 +12,57 @@ logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 SUPPORTED_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
+# Windows built-in fonts (family names) — auto-skip on import
+WINDOWS_BUILTIN_FONTS = {
+    # Latin / Core
+    "Arial", "Arial Black", "Arial Narrow", "Arial Rounded MT Bold",
+    "Calibri", "Calibri Light", "Cambria", "Cambria Math",
+    "Candara", "Candara Light", "Comic Sans MS", "Consolas",
+    "Constantia", "Corbel", "Corbel Light", "Courier New",
+    "Ebrima", "Franklin Gothic Medium", "Gabriola", "Gadugi",
+    "Georgia", "Impact", "Ink Free", "Javanese Text",
+    "Leelawadee UI", "Leelawadee UI Semilight", "Lucida Console",
+    "Lucida Sans Unicode", "MS Gothic", "MS PGothic", "MS UI Gothic",
+    "MV Boli", "Malgun Gothic", "Malgun Gothic Semilight",
+    "Marlett", "Microsoft Himalaya", "Microsoft JhengHei",
+    "Microsoft JhengHei Light", "Microsoft JhengHei UI",
+    "Microsoft JhengHei UI Light", "Microsoft New Tai Lue",
+    "Microsoft PhagsPa", "Microsoft Sans Serif", "Microsoft Tai Le",
+    "Microsoft YaHei", "Microsoft YaHei Light", "Microsoft YaHei UI",
+    "Microsoft YaHei UI Light", "Microsoft Yi Baiti",
+    "MingLiU-ExtB", "MingLiU_HKSCS", "MingLiU_HKSCS-ExtB",
+    "Miriam", "Miriam Fixed", "Mongolian Baiti", "Myanmar Text",
+    "NSimSun", "Nirmala UI", "Nirmala UI Semilight",
+    "PMingLiU", "PMingLiU-ExtB", "Palatino Linotype",
+    "Plantagenet Cherokee", "Rod", "Sakkal Majalla",
+    "Segoe MDL2 Assets", "Segoe Print", "Segoe Script",
+    "Segoe UI", "Segoe UI Black", "Segoe UI Emoji",
+    "Segoe UI Historic", "Segoe UI Light", "Segoe UI Semibold",
+    "Segoe UI Semilight", "Segoe UI Symbol", "Shonar Bangla",
+    "SimHei", "SimSun", "SimSun-ExtB", "Simplified Arabic",
+    "Simplified Arabic Fixed", "Sitka", "Sylfaen", "Symbol",
+    "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana",
+    "Vrinda", "Webdings", "Wingdings", "Wingdings 2", "Wingdings 3",
+    "Yu Gothic", "Yu Gothic Light", "Yu Gothic Medium", "Yu Gothic UI",
+    "Yu Gothic UI Light", "Yu Gothic UI Semibold", "Yu Gothic UI Semilight",
+    "BIZ UDGothic", "BIZ UDMincho Medium",
+    # Common CJK system fonts
+    "新宋体", "宋体", "黑体", "楷体", "仿宋",
+    "微软雅黑", "微軟雅黑", "微软正黑", "微軟正黑體", "微软正黑体",
+    "细明体", "細明體", "新细明体", "新細明體",
+    "Ming(for ISO10646)", "PMingLiU-ExtB",
+    "MS Mincho", "MS PMincho", "Meiryo", "Meiryo UI",
+    "Yu Mincho",
+}
+
+_WINDOWS_BUILTIN_LOWER = {n.lower() for n in WINDOWS_BUILTIN_FONTS}
+
+
+def is_windows_builtin(family_name: str) -> bool:
+    """Check if a font family name matches a Windows built-in font."""
+    return family_name.strip().lower() in _WINDOWS_BUILTIN_LOWER
+
+
 _ZH_LANGS = {(3, 2052), (3, 1028), (1, 33)}
 _EN_LANGS = {(3, 1033), (1, 0)}
 _COLLECT_LANGS = _ZH_LANGS | _EN_LANGS

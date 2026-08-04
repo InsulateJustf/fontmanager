@@ -12,7 +12,7 @@ from waitress import serve
 
 import db
 from font_parser import (parse_font, generate_filename, detect_format,
-                         get_ttc_subfonts, get_cjk_support)
+                         get_ttc_subfonts, get_cjk_support, is_windows_builtin)
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -83,6 +83,14 @@ def _process_single_file(file_storage):
         family_name = meta["family_name"]
         style_name = meta["style_name"]
         fmt = meta["format"]
+
+        # Skip Windows built-in fonts
+        if is_windows_builtin(family_name):
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            return {"filename": original_name, "status": "skipped",
+                    "message": "Windows 系统自带字体，已跳过",
+                    "family_name": family_name, "style_name": style_name}
 
         new_file_size = os.path.getsize(tmp_path)
 
@@ -348,6 +356,11 @@ def scan_fonts_directory():
         family_name = meta["family_name"]
         style_name = meta["style_name"]
         fmt = meta["format"]
+
+        # Skip Windows built-in fonts
+        if is_windows_builtin(family_name):
+            print("  ⚠️  跳过 Windows 系统字体: {} ({})".format(family_name, fname))
+            continue
 
         # Check if this family+style already exists in DB
         if (family_name, style_name) in db_families:
