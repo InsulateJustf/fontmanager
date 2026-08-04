@@ -1,6 +1,8 @@
 """Font file parser using fontTools.
 
 Extracts metadata (family name, style name, format) from TTF, OTF, and TTC files.
+- Family name: prefers Chinese when available
+- Style name: prefers English (Regular/Bold/Italic are standard)
 """
 
 import os
@@ -8,13 +10,10 @@ import re
 from typing import Optional
 from fontTools.ttLib import TTFont
 
-
-# Supported extensions
 SUPPORTED_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
 
 def detect_format(filepath: str) -> Optional[str]:
-    """Detect font format from file extension."""
     ext = os.path.splitext(filepath)[1].lower()
     if ext in SUPPORTED_EXTENSIONS:
         return ext.lstrip(".")
@@ -22,39 +21,84 @@ def detect_format(filepath: str) -> Optional[str]:
 
 
 def _sanitize_filename(name: str) -> str:
-    """Replace illegal filename characters with underscore."""
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
 
-def parse_font(filepath: str) -> dict:
-    """Parse a font file and return metadata.
+def _get_name(name_table, name_id: int, prefer_chinese: bool = True) -> Optional[str]:
+    """Get a name record with configurable language priority.
 
-    Returns dict with keys:
-        family_name, style_name, format, version, full_name
-
-    Raises ValueError if the file cannot be parsed.
+    prefer_chinese=True  → used for family/full names (方正新秀丽繁体)
+    prefer_chinese=False → used for style names (Regular, not 常规体)
     """
+    CN_PRIORITY = [
+        (3, 2052),  # Windows Simplified Chinese
+        (3, 1028),  # Windows Traditional Chinese
+        (1, 33),    # Mac Chinese
+        (3, 1033),  # Windows English US
+        (1, 0),     # Mac English
+    ]
+    EN_PRIORITY = [
+        (3, 1033),  # Windows English US
+        (1, 0),     # Mac English
+        (3, 2052),  # Windows Simplified Chinese
+        (3, 1028),  # Windows Traditional Chinese
+        (1, 33),    # Mac Chinese
+    ]
+
+    priority = CN_PRIORITY if prefer_chinese else EN_PRIORITY
+
+    records = {}
+    for record in name_table.names:
+        if record.nameID == name_id:
+            try:
+                text = record.toUnicode()
+                if text and text.strip():
+                    records[(record.platformID, record.langID)] = text.strip()
+            except Exception:
+                pass
+
+    for plat, lang in priority:
+        if (plat, lang) in records:
+            return records[(plat, lang)]
+
+    for text in records.values():
+        return text
+
+    return None
+
+
+def parse_font(filepath: str) -> dict:
+    """Parse a font file and return metadata."""
     fmt = detect_format(filepath)
     if fmt is None:
-        raise ValueError(f"Unsupported file format: {os.path.splitext(filepath)[1]}")
+        raise ValueError("Unsupported file format: {}".format(os.path.splitext(filepath)[1]))
 
     try:
         font = TTFont(filepath, fontNumber=0)
     except Exception as e:
-        raise ValueError(f"Failed to parse font file: {e}") from e
+        raise ValueError("Failed to parse font file: {}".format(e)) from e
 
     try:
         name_table = font.get("name")
         if name_table is None:
             raise ValueError("Font has no name table")
 
-        family_name = name_table.getDebugName(1) or name_table.getDebugName(16)
-        style_name = name_table.getDebugName(2) or name_table.getDebugName(17)
-        version = name_table.getDebugName(5) or ""
-        full_name = name_table.getDebugName(4) or ""
+        # Family name: prefer Chinese (方正新秀丽繁体)
+        family_name = (
+            _get_name(name_table, 1, prefer_chinese=True)
+            or _get_name(name_table, 16, prefer_chinese=True)
+        )
+
+        # Style name: prefer English (Regular, Bold, Italic)
+        style_name = (
+            _get_name(name_table, 2, prefer_chinese=False)
+            or _get_name(name_table, 17, prefer_chinese=False)
+        )
+
+        version = _get_name(name_table, 5, prefer_chinese=False) or ""
+        full_name = _get_name(name_table, 4, prefer_chinese=True) or ""
 
         if not family_name:
-            # Fallback: try to extract from full name
             if full_name:
                 parts = full_name.split()
                 family_name = parts[0] if parts else "Unknown"
@@ -76,7 +120,6 @@ def parse_font(filepath: str) -> dict:
 
 
 def generate_filename(family_name: str, style_name: str, ext: str) -> str:
-    """Generate a sanitized filename from font metadata."""
     safe_family = _sanitize_filename(family_name)
     safe_style = _sanitize_filename(style_name)
-    return f"{safe_family}-{safe_style}.{ext}"
+    return "{}-{}.{}".format(safe_family, safe_style, ext)
