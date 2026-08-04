@@ -1,71 +1,58 @@
 // FontManager Frontend
-
 (function () {
     "use strict";
 
-    const dropzone = document.getElementById("dropzone");
-    const fileInput = document.getElementById("fileInput");
-    const folderInput = document.getElementById("folderInput");
-    const uploadResults = document.getElementById("uploadResults");
-    const resultsList = document.getElementById("resultsList");
-    const fontTableBody = document.getElementById("fontTableBody");
-    const emptyState = document.getElementById("emptyState");
-    const fontCount = document.getElementById("fontCount");
-    const refreshBtn = document.getElementById("refreshBtn");
+    var dropzone    = document.getElementById("dropzone");
+    var fileInput   = document.getElementById("fileInput");
+    var folderInput = document.getElementById("folderInput");
+    var uploadResults = document.getElementById("uploadResults");
+    var resultsList   = document.getElementById("resultsList");
+    var fontTableBody = document.getElementById("fontTableBody");
+    var emptyState    = document.getElementById("emptyState");
+    var fontCount     = document.getElementById("fontCount");
+    var refreshBtn    = document.getElementById("refreshBtn");
 
-    // ─── Global: block browser default navigation on file drop ──────────────
-    // This MUST happen before anything else, capturing phase.
+    // ─── Block browser default: open file as page ───────────────────────────
 
-    document.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "none";
-    }, true);
+    window.addEventListener("dragover", function (e) { e.preventDefault(); }, false);
+    window.addEventListener("drop",     function (e) { e.preventDefault(); }, false);
 
-    document.addEventListener("drop", function (e) {
-        e.preventDefault();
-    }, true);
+    // ─── Dropzone ───────────────────────────────────────────────────────────
 
-    // ─── Dropzone drag/drop ─────────────────────────────────────────────────
-
-    let dragCounter = 0;
+    var dragDepth = 0;
 
     dropzone.addEventListener("dragenter", function (e) {
         e.preventDefault();
-        e.stopPropagation();
-        dragCounter++;
+        dragDepth++;
         dropzone.classList.add("dragover");
-        e.dataTransfer.dropEffect = "copy";
     });
 
     dropzone.addEventListener("dragover", function (e) {
         e.preventDefault();
-        e.stopPropagation();
         e.dataTransfer.dropEffect = "copy";
     });
 
     dropzone.addEventListener("dragleave", function (e) {
         e.preventDefault();
-        e.stopPropagation();
-        dragCounter--;
-        if (dragCounter <= 0) {
-            dragCounter = 0;
+        dragDepth--;
+        if (dragDepth <= 0) {
+            dragDepth = 0;
             dropzone.classList.remove("dragover");
         }
     });
 
     dropzone.addEventListener("drop", function (e) {
         e.preventDefault();
-        e.stopPropagation();
-        dragCounter = 0;
+        dragDepth = 0;
         dropzone.classList.remove("dragover");
 
-        var files = e.dataTransfer.files;
-        if (files && files.length > 0) {
-            uploadFiles(files);
+        var dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+            uploadFiles(dt.files);
         }
     });
 
-    // ─── File input buttons ─────────────────────────────────────────────────
+    // ─── Manual file input ──────────────────────────────────────────────────
 
     fileInput.addEventListener("change", function () {
         if (fileInput.files.length > 0) {
@@ -83,148 +70,137 @@
 
     // ─── Upload ─────────────────────────────────────────────────────────────
 
-    function uploadFiles(files) {
-        var formData = new FormData();
-        var count = 0;
-        for (var i = 0; i < files.length; i++) {
-            var name = files[i].name.toLowerCase();
-            if (name.endsWith(".ttf") || name.endsWith(".otf") || name.endsWith(".ttc")) {
-                formData.append("files", files[i]);
-                count++;
+    function uploadFiles(fileList) {
+        var fd = new FormData();
+        var fontExts = [".ttf", ".otf", ".ttc"];
+        var added = 0;
+
+        for (var i = 0; i < fileList.length; i++) {
+            var nm = fileList[i].name.toLowerCase();
+            var isFont = false;
+            for (var j = 0; j < fontExts.length; j++) {
+                if (nm.endsWith(fontExts[j])) { isFont = true; break; }
+            }
+            if (isFont) {
+                fd.append("files", fileList[i]);
+                added++;
             }
         }
 
-        if (count === 0) {
-            showResults([{
-                filename: "-",
-                status: "error",
-                message: "没有找到 TTF/OTF/TTC 格式的文件"
-            }]);
+        if (added === 0) {
+            showMessage("没有找到 TTF / OTF / TTC 文件", "error");
             return;
         }
 
-        uploadResults.style.display = "block";
-        resultsList.innerHTML =
-            '<div class="result-item">' +
-            '<span class="result-icon">⏳</span>' +
-            '<span class="result-filename">正在上传 ' + count + ' 个文件...</span>' +
-            '</div>';
+        showMessage("正在上传 " + added + " 个文件…", "loading");
 
-        fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-        })
-            .then(function (resp) { return resp.json(); })
+        fetch("/api/upload", { method: "POST", body: fd })
+            .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.status === "ok") {
-                    showResults(data.results);
+                if (data.status === "ok" && data.results) {
+                    renderResults(data.results);
                     loadFontList();
                 } else {
-                    showResults([{ filename: "-", status: "error", message: data.message || "上传失败" }]);
+                    showMessage(data.message || "上传失败", "error");
                 }
             })
             .catch(function (err) {
-                showResults([{ filename: "-", status: "error", message: "网络错误: " + err.message }]);
+                showMessage("网络错误: " + err.message, "error");
             });
     }
 
-    function showResults(results) {
+    // ─── Results display ────────────────────────────────────────────────────
+
+    function showMessage(msg, type) {
+        uploadResults.style.display = "block";
+        var icon = type === "loading" ? "⏳" : "❌";
+        resultsList.innerHTML =
+            '<div class="result-item ' + type + '">' +
+            '<span class="result-icon">' + icon + '</span>' +
+            '<span class="result-message">' + escapeHtml(msg) + '</span></div>';
+    }
+
+    function renderResults(results) {
         uploadResults.style.display = "block";
         resultsList.innerHTML = "";
         for (var i = 0; i < results.length; i++) {
             var r = results[i];
             var icon = r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : "❌";
-            var item = document.createElement("div");
-            item.className = "result-item " + r.status;
-            item.innerHTML =
+            var el = document.createElement("div");
+            el.className = "result-item " + r.status;
+            el.innerHTML =
                 '<span class="result-icon">' + icon + '</span>' +
                 '<span class="result-filename">' + escapeHtml(r.filename) + '</span>' +
                 '<span class="result-message">' + escapeHtml(r.message) + '</span>';
-            resultsList.appendChild(item);
+            resultsList.appendChild(el);
         }
     }
 
-    // ─── Font List ──────────────────────────────────────────────────────────
+    // ─── Font list ──────────────────────────────────────────────────────────
 
     function loadFontList() {
         fetch("/api/fonts")
-            .then(function (resp) { return resp.json(); })
+            .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.status === "ok") {
-                    renderFontList(data.fonts);
-                }
+                if (data.status === "ok") renderFontList(data.fonts);
             })
-            .catch(function (err) {
-                console.error("Failed to load fonts:", err);
-            });
+            .catch(function (e) { console.error("load fonts failed:", e); });
     }
 
     function renderFontList(fonts) {
         fontTableBody.innerHTML = "";
         fontCount.textContent = fonts.length > 0 ? "共 " + fonts.length + " 个" : "";
-
-        if (fonts.length === 0) {
-            emptyState.style.display = "block";
-            return;
-        }
-        emptyState.style.display = "none";
+        emptyState.style.display = fonts.length === 0 ? "block" : "none";
 
         for (var i = 0; i < fonts.length; i++) {
-            var font = fonts[i];
+            var f = fonts[i];
             var tr = document.createElement("tr");
-            var displayName = escapeHtml(font.family_name) + " - " + escapeHtml(font.style_name);
+            var label = escapeHtml(f.family_name) + " - " + escapeHtml(f.style_name);
             tr.innerHTML =
-                "<td>" + escapeHtml(font.family_name) + "</td>" +
-                "<td>" + escapeHtml(font.style_name) + "</td>" +
-                "<td>" + escapeHtml(font.format.toUpperCase()) + "</td>" +
-                "<td>" + formatFileSize(font.file_size) + "</td>" +
-                "<td>" + formatDate(font.created_at) + "</td>" +
-                '<td><button class="btn btn-danger" onclick="FM.deleteFont(' + font.id + ",'" + displayName.replace(/'/g, "\\'") + "')\">删除</button></td>";
+                "<td>" + escapeHtml(f.family_name) + "</td>" +
+                "<td>" + escapeHtml(f.style_name) + "</td>" +
+                "<td>" + escapeHtml(f.format.toUpperCase()) + "</td>" +
+                "<td>" + fmtSize(f.file_size) + "</td>" +
+                "<td>" + fmtDate(f.created_at) + "</td>" +
+                '<td><button class="btn btn-danger" onclick="FM.del(' + f.id + ',\'' + label.replace(/'/g, "\\'") + "')\">删除</button></td>";
             fontTableBody.appendChild(tr);
         }
     }
 
     // ─── Delete ─────────────────────────────────────────────────────────────
 
-    function deleteFont(id, displayName) {
-        if (!confirm('确定要删除字体 "' + displayName + '" 吗？\n此操作将同时删除服务器上的字体文件。')) {
-            return;
-        }
+    function del(id, name) {
+        if (!confirm("确定删除 \"" + name + "\" ？")) return;
         fetch("/api/fonts/" + id, { method: "DELETE" })
-            .then(function (resp) { return resp.json(); })
-            .then(function (data) {
-                if (data.status === "ok") {
-                    loadFontList();
-                } else {
-                    alert("删除失败: " + (data.message || "未知错误"));
-                }
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.status === "ok") loadFontList();
+                else alert("删除失败: " + (d.message || "未知错误"));
             })
-            .catch(function (err) {
-                alert("删除失败: " + err.message);
-            });
+            .catch(function (e) { alert("删除失败: " + e.message); });
     }
 
-    // Expose for onclick
-    window.FM = { deleteFont: deleteFont };
+    window.FM = { del: del };
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 
-    function escapeHtml(text) {
-        var div = document.createElement("div");
-        div.textContent = text || "";
-        return div.innerHTML;
+    function escapeHtml(t) {
+        var d = document.createElement("div");
+        d.textContent = t || "";
+        return d.innerHTML;
     }
 
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    function fmtSize(b) {
+        if (b < 1024) return b + " B";
+        if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+        return (b / 1048576).toFixed(1) + " MB";
     }
 
-    function formatDate(ts) {
+    function fmtDate(ts) {
         if (!ts) return "";
         var d = new Date(ts);
-        return d.toLocaleDateString("zh-CN") + " " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+        return d.toLocaleDateString("zh-CN") + " " +
+               d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
     }
 
     // ─── Init ───────────────────────────────────────────────────────────────
