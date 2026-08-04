@@ -309,5 +309,13 @@
     function fmtDate(ts) { if (!ts) return ""; var d = new Date(ts); return d.toLocaleDateString("zh-CN") + " " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); }
 
     refreshBtn.addEventListener("click", loadFontList);
+
+    var downloadAllBtn = document.getElementById("downloadAllBtn");
+    if (downloadAllBtn) {
+        downloadAllBtn.addEventListener("click", function () {
+            window.open("/api/fonts/download-all", "_blank");
+        });
+    }
+
     loadFontList();
 })();

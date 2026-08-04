@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import argparse
+import zipfile
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from waitress import serve
 
@@ -283,6 +284,30 @@ def parse_args():
                         default=os.environ.get("FONT_HOST", DEFAULT_HOST),
                         help="Server host (default: %(default)s)")
     return parser.parse_args()
+@app.route("/api/fonts/download-all", methods=["GET"])
+def download_all_fonts():
+    """Download all fonts as a zip file."""
+    fonts = db.get_all_fonts()
+    if not fonts:
+        return jsonify({"status": "error", "message": "没有可下载的字体"}), 404
+
+    # Create zip in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for font in fonts:
+            file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+            if os.path.exists(file_path):
+                zf.write(file_path, font["stored_filename"])
+    zip_buffer.seek(0)
+
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="FontManager-字体库.zip"
+    )
+
+
 def scan_fonts_directory():
     """Scan FONT_STORAGE on startup: auto-import and rename orphan font files."""
     if not os.path.isdir(FONT_STORAGE):
