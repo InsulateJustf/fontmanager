@@ -212,12 +212,12 @@
 
             // Build optgroups with language labels
             var regionLabels = {
-                SC: "🇨🇳 简体中文 (SC)",
-                TC: "🇹🇼 繁体中文 (TC)",
-                HK: "🇭🇰 香港繁体 (HK)",
-                JP: "🇯🇵 日文 (JP)",
-                KR: "🇰🇷 韩文 (KR)",
-                Other: "🌐 其他"
+                SC: "简体中文 (SC)",
+                TC: "繁体中文 (TC)",
+                HK: "香港繁体 (HK)",
+                JP: "日文 (JP)",
+                KR: "韩文 (KR)",
+                Other: "其他"
             };
             var regionOrder = ["SC", "TC", "HK", "JP", "KR", "Other"];
             for (var r = 0; r < regionOrder.length; r++) {
