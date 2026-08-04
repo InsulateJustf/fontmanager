@@ -283,6 +283,108 @@ def parse_args():
                         default=os.environ.get("FONT_HOST", DEFAULT_HOST),
                         help="Server host (default: %(default)s)")
     return parser.parse_args()
+def scan_fonts_directory():
+    """Scan FONT_STORAGE on startup: auto-import and rename orphan font files."""
+    if not os.path.isdir(FONT_STORAGE):
+        return
+
+    # Build set of stored_filenames already in DB
+    existing_fonts = db.get_all_fonts()
+    db_filenames = {f["stored_filename"] for f in existing_fonts}
+
+    # Also build a set of (family_name, style_name) for dedup
+    db_families = {(f["family_name"], f["style_name"]) for f in existing_fonts}
+
+    scanned = 0
+    imported = 0
+    renamed = 0
+
+    for fname in os.listdir(FONT_STORAGE):
+        fpath = os.path.join(FONT_STORAGE, fname)
+        if not os.path.isfile(fpath):
+            continue
+        ext = os.path.splitext(fname)[1].lower()
+        if ext not in (".ttf", ".otf", ".ttc"):
+            continue
+
+        scanned += 1
+
+        # Already in DB by stored_filename
+        if fname in db_filenames:
+            continue
+
+        # Parse the font file
+        try:
+            meta = parse_font(fpath)
+        except Exception as e:
+            print("  ⚠️  跳过无法解析的文件: {} ({})".format(fname, e))
+            continue
+
+        family_name = meta["family_name"]
+        style_name = meta["style_name"]
+        fmt = meta["format"]
+
+        # Check if this family+style already exists in DB
+        if (family_name, style_name) in db_families:
+            existing = db.get_font_by_family_style(family_name, style_name)
+            if existing:
+                # Compare completeness
+                file_size = os.path.getsize(fpath)
+                if _is_more_complete(fmt, file_size, existing["format"], existing["file_size"]):
+                    # Remove old file and DB record
+                    old_path = os.path.join(FONT_STORAGE, existing["stored_filename"])
+                    if os.path.exists(old_path) and old_path != fpath:
+                        os.remove(old_path)
+                    db.delete_font(existing["id"])
+                    db_families.discard((family_name, style_name))
+                else:
+                    # Old is more complete, skip this file
+                    print("  ⚠️  跳过重复文件: {} (已有更完整的版本)".format(fname))
+                    continue
+
+        # Generate the correct filename
+        ext_no_dot = ext.lstrip(".")
+        new_filename = generate_filename(family_name, style_name, ext_no_dot)
+        new_path = os.path.join(FONT_STORAGE, new_filename)
+
+        # Rename if needed (avoid overwriting)
+        if fpath != new_path:
+            counter = 1
+            while os.path.exists(new_path) and new_path != fpath:
+                base, ext_part = os.path.splitext(new_filename)
+                new_filename = "{}_{}{}".format(base, counter, ext_part)
+                new_path = os.path.join(FONT_STORAGE, new_filename)
+                counter += 1
+            if fpath != new_path:
+                os.rename(fpath, new_path)
+                renamed += 1
+
+        # Compute metadata
+        file_size = os.path.getsize(new_path)
+        file_hash = db.compute_file_hash(new_path)
+
+        cjk_info = None
+        subfonts_info = None
+        if fmt == "ttc":
+            cjk_info = get_cjk_support(new_path, font_number=0)
+            subfonts_info = get_ttc_subfonts(new_path)
+        else:
+            cjk_info = get_cjk_support(new_path, font_number=0)
+
+        db.insert_font(
+            family_name=family_name, style_name=style_name, fmt=fmt,
+            file_size=file_size, file_hash=file_hash,
+            stored_filename=new_filename, original_filename=fname,
+            cjk_info=cjk_info, subfonts_info=subfonts_info,
+        )
+        db_families.add((family_name, style_name))
+        imported += 1
+        print("  ✅ 入库: {} - {} ({})".format(family_name, style_name, new_filename))
+
+    if scanned > 0:
+        print("扫描完成: {} 个文件, 新入库 {} 个, 重命名 {} 个".format(scanned, imported, renamed))
+
+
 
 
 if __name__ == "__main__":
@@ -290,6 +392,8 @@ if __name__ == "__main__":
     FONT_STORAGE = os.path.abspath(args.storage)
     ensure_storage()
     db.init_db()
+    print("扫描字体目录: {}".format(FONT_STORAGE))
+    scan_fonts_directory()
     print("FontManager starting on http://{}:{}".format(args.host, args.port))
     print("Font storage: {}".format(FONT_STORAGE))
     serve(app, host=args.host, port=args.port)
