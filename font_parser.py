@@ -240,6 +240,66 @@ def generate_filename(family_name: str, style_name: str, ext: str) -> str:
     return "{}-{}.{}".format(safe_family, safe_style, ext)
 
 
+def _detect_region_from_name(name: str) -> str:
+    """Detect region code from a font name string."""
+    upper = name.upper()
+    # Use word boundary matching: check for region codes as separate words
+    import re
+    # Match region codes surrounded by word boundaries or hyphens
+    m = re.search(r'(?:^|[\s\-])(SC|TC|HK|HC|JP|KR|CN|TW|JA|KO)(?:$|[\s\-])', upper)
+    if m:
+        code = m.group(1)
+        if code in ("SC", "CN"):
+            return "SC"
+        if code in ("TC", "TW"):
+            return "TC"
+        if code in ("HK", "HC"):
+            return "HK"
+        if code in ("JP", "JA"):
+            return "JP"
+        if code in ("KR", "KO"):
+            return "KR"
+    if "简体" in name or "简" in name:
+        return "SC"
+    if "繁体" in name or "繁" in name:
+        return "TC"
+    return ""
+
+
+def _detect_region_from_langid(name_table) -> str:
+    """Detect region from name table language IDs as fallback."""
+    if name_table is None:
+        return ""
+    has_sc = False
+    has_tc = False
+    has_ja = False
+    has_ko = False
+    for record in name_table.names:
+        if record.nameID not in (1, 4):
+            continue
+        if record.platformID == 3:
+            if record.langID == _LANG_SC:
+                has_sc = True
+            elif record.langID == _LANG_TC:
+                has_tc = True
+            elif record.langID == _LANG_JA:
+                has_ja = True
+            elif record.langID == _LANG_KO:
+                has_ko = True
+        elif record.platformID == 1 and record.langID == 33:
+            has_sc = True
+    # Return the most specific region
+    if has_sc:
+        return "SC"
+    if has_tc:
+        return "TC"
+    if has_ja:
+        return "JP"
+    if has_ko:
+        return "KR"
+    return ""
+
+
 def get_ttc_subfonts(filepath: str) -> list:
     """Get metadata for all sub-fonts in a TTC, grouped by region+weight."""
     ttc = TTCollection(filepath, lazy=True)
@@ -255,23 +315,22 @@ def get_ttc_subfonts(filepath: str) -> list:
                       or _get_name(name_table, 16, prefer_chinese=True)
                       or "Sub-font {}".format(i))
             style = _get_name(name_table, 2, prefer_chinese=False) or ""
+            full_name = _get_name(name_table, 4, prefer_chinese=True) or ""
 
-            # Detect region from name
-            region = ""
-            family_upper = family.upper()
-            if " SC " in family_upper or family_upper.endswith(" SC"):
-                region = "SC"
-            elif " TC " in family_upper or family_upper.endswith(" TC"):
-                region = "TC"
-            elif " HK " in family_upper or family_upper.endswith(" HK"):
-                region = "HK"
-            elif " JP " in family_upper or family_upper.endswith(" JP"):
-                region = "JP"
-            elif " KR " in family_upper or family_upper.endswith(" KR"):
-                region = "KR"
+            # Detect region: try family name first, then full name, then langID
+            region = _detect_region_from_name(family)
+            if not region:
+                region = _detect_region_from_name(full_name)
+            if not region:
+                region = _detect_region_from_langid(name_table)
 
-            # Detect weight from name
-            weight = style  # style_name usually has the weight
+            # Detect weight from style name (most reliable)
+            weight = style
+            for w in _WEIGHT_EN:
+                if style.lower().endswith(w.lower()) or w.lower() in style.lower():
+                    weight = w
+                    break
+            # Also try family name for weight
             for w in _WEIGHT_EN:
                 if family.lower().endswith(w.lower()):
                     weight = w

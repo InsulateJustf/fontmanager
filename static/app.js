@@ -188,13 +188,17 @@
     function buildSubfontSelector(subfonts) {
         subfontSelect.innerHTML = "";
 
-        // Check if sub-fonts have region info (multi-region TTC like Noto CJK)
-        var regions = {};
+        // Check if sub-fonts have region info
+        var regionCount = {};
         for (var i = 0; i < subfonts.length; i++) {
             var sf = subfonts[i];
-            if (sf.region) regions[sf.region] = true;
+            if (sf.region) {
+                if (!regionCount[sf.region]) regionCount[sf.region] = 0;
+                regionCount[sf.region]++;
+            }
         }
-        var hasRegions = Object.keys(regions).length > 1;
+        var regionKeys = Object.keys(regionCount);
+        var hasRegions = regionKeys.length > 0;
 
         if (hasRegions) {
             // Group by region, then by weight within each region
@@ -206,25 +210,34 @@
                 grouped[region].push(sf);
             }
 
-            // Build optgroups
-            var regionNames = { SC: "简体中文 (SC)", TC: "繁体中文 (TC)", HK: "香港 (HK)", JP: "日文 (JP)", KR: "韩文 (KR)", Other: "其他" };
+            // Build optgroups with language labels
+            var regionLabels = {
+                SC: "🇨🇳 简体中文 (SC)",
+                TC: "🇹🇼 繁体中文 (TC)",
+                HK: "🇭🇰 香港繁体 (HK)",
+                JP: "🇯🇵 日文 (JP)",
+                KR: "🇰🇷 韩文 (KR)",
+                Other: "🌐 其他"
+            };
             var regionOrder = ["SC", "TC", "HK", "JP", "KR", "Other"];
             for (var r = 0; r < regionOrder.length; r++) {
                 var regionKey = regionOrder[r];
                 if (!grouped[regionKey]) continue;
                 var optgroup = document.createElement("optgroup");
-                optgroup.label = regionNames[regionKey] || regionKey;
+                optgroup.label = regionLabels[regionKey] || regionKey;
                 var subs = grouped[regionKey];
                 for (var j = 0; j < subs.length; j++) {
                     var opt = document.createElement("option");
                     opt.value = subs[j].index;
-                    opt.textContent = subs[j].weight || subs[j].style_name || "Regular";
+                    var label = subs[j].weight || subs[j].style_name || "Regular";
+                    // Show count if multiple sub-fonts share same weight label
+                    opt.textContent = label;
                     optgroup.appendChild(opt);
                 }
                 subfontSelect.appendChild(optgroup);
             }
         } else {
-            // Single region or no region info — flat list
+            // No region info — flat list with full name
             for (var i = 0; i < subfonts.length; i++) {
                 var opt = document.createElement("option");
                 opt.value = subfonts[i].index;
