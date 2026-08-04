@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FontManager — 字体管理</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
     <div class="container">
@@ -23,15 +23,15 @@
                 </div>
             </div>
             <div class="upload-buttons">
-                <label for="fileInput" class="btn btn-primary upload-btn">
+                <button type="button" id="fileBtn" class="btn btn-primary upload-btn">
                     📎 选择文件上传
-                </label>
-                <label for="folderInput" class="btn btn-secondary upload-btn">
+                </button>
+                <button type="button" id="folderBtn" class="btn btn-secondary upload-btn">
                     📂 选择文件夹上传
-                </label>
+                </button>
             </div>
-            <input type="file" id="fileInput" multiple accept=".ttf,.otf,.ttc" hidden>
-            <input type="file" id="folderInput" webkitdirectory multiple hidden>
+            <input type="file" id="fileInput" multiple accept=".ttf,.otf,.ttc" style="display:none">
+            <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
         </div>
 
         <!-- Upload Results -->
@@ -69,6 +69,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 </html>

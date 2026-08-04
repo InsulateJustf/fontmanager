@@ -1,10 +1,13 @@
-// FontManager Frontend
 (function () {
     "use strict";
 
-    var dropzone    = document.getElementById("dropzone");
-    var fileInput   = document.getElementById("fileInput");
-    var folderInput = document.getElementById("folderInput");
+    // ─── Elements ───────────────────────────────────────────────────────────
+
+    var dropzone      = document.getElementById("dropzone");
+    var fileInput     = document.getElementById("fileInput");
+    var folderInput   = document.getElementById("folderInput");
+    var fileBtn       = document.getElementById("fileBtn");
+    var folderBtn     = document.getElementById("folderBtn");
     var uploadResults = document.getElementById("uploadResults");
     var resultsList   = document.getElementById("resultsList");
     var fontTableBody = document.getElementById("fontTableBody");
@@ -12,12 +15,36 @@
     var fontCount     = document.getElementById("fontCount");
     var refreshBtn    = document.getElementById("refreshBtn");
 
-    // ─── Block browser default: open file as page ───────────────────────────
+    // ─── Button → trigger hidden input ──────────────────────────────────────
 
-    window.addEventListener("dragover", function (e) { e.preventDefault(); }, false);
-    window.addEventListener("drop",     function (e) { e.preventDefault(); }, false);
+    fileBtn.addEventListener("click", function () {
+        fileInput.click();
+    });
 
-    // ─── Dropzone ───────────────────────────────────────────────────────────
+    folderBtn.addEventListener("click", function () {
+        folderInput.click();
+    });
+
+    fileInput.addEventListener("change", function () {
+        if (fileInput.files.length > 0) {
+            uploadFiles(fileInput.files);
+            fileInput.value = "";
+        }
+    });
+
+    folderInput.addEventListener("change", function () {
+        if (folderInput.files.length > 0) {
+            uploadFiles(folderInput.files);
+            folderInput.value = "";
+        }
+    });
+
+    // ─── Block browser default drag-n-drop → navigate/download ─────────────
+
+    window.addEventListener("dragover", function (e) { e.preventDefault(); });
+    window.addEventListener("drop",     function (e) { e.preventDefault(); });
+
+    // ─── Dropzone drag/drop ─────────────────────────────────────────────────
 
     var dragDepth = 0;
 
@@ -29,7 +56,7 @@
 
     dropzone.addEventListener("dragover", function (e) {
         e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     });
 
     dropzone.addEventListener("dragleave", function (e) {
@@ -43,28 +70,11 @@
 
     dropzone.addEventListener("drop", function (e) {
         e.preventDefault();
+        e.stopPropagation();
         dragDepth = 0;
         dropzone.classList.remove("dragover");
-
-        var dt = e.dataTransfer;
-        if (dt && dt.files && dt.files.length > 0) {
-            uploadFiles(dt.files);
-        }
-    });
-
-    // ─── Manual file input ──────────────────────────────────────────────────
-
-    fileInput.addEventListener("change", function () {
-        if (fileInput.files.length > 0) {
-            uploadFiles(fileInput.files);
-            fileInput.value = "";
-        }
-    });
-
-    folderInput.addEventListener("change", function () {
-        if (folderInput.files.length > 0) {
-            uploadFiles(folderInput.files);
-            folderInput.value = "";
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            uploadFiles(e.dataTransfer.files);
         }
     });
 
@@ -109,7 +119,7 @@
             });
     }
 
-    // ─── Results display ────────────────────────────────────────────────────
+    // ─── Results ────────────────────────────────────────────────────────────
 
     function showMessage(msg, type) {
         uploadResults.style.display = "block";
@@ -162,7 +172,7 @@
                 "<td>" + escapeHtml(f.format.toUpperCase()) + "</td>" +
                 "<td>" + fmtSize(f.file_size) + "</td>" +
                 "<td>" + fmtDate(f.created_at) + "</td>" +
-                '<td><button class="btn btn-danger" onclick="FM.del(' + f.id + ',\'' + label.replace(/'/g, "\\'") + "')\">删除</button></td>";
+                '<td><button class="btn btn-danger" onclick="FM.del(' + f.id + ",'" + label.replace(/'/g, "\\'") + "')\">删除</button></td>";
             fontTableBody.appendChild(tr);
         }
     }
