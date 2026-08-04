@@ -1,24 +1,22 @@
 """SQLite database operations for font metadata."""
 
+import json
 import os
 import sqlite3
 import hashlib
 from typing import Optional
 from datetime import datetime
 
-
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fontmanager.db")
 
 
 def get_connection():
-    """Get a database connection."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db():
-    """Initialize the database schema."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -31,16 +29,23 @@ def init_db():
             file_hash TEXT NOT NULL,
             stored_filename TEXT NOT NULL,
             original_filename TEXT NOT NULL,
+            cjk_info TEXT,
+            subfonts_info TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(family_name, style_name)
         )
     """)
+    # Migrate: add columns if missing
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(fonts)").fetchall()}
+    if "cjk_info" not in existing:
+        cursor.execute("ALTER TABLE fonts ADD COLUMN cjk_info TEXT")
+    if "subfonts_info" not in existing:
+        cursor.execute("ALTER TABLE fonts ADD COLUMN subfonts_info TEXT")
     conn.commit()
     conn.close()
 
 
 def compute_file_hash(filepath: str) -> str:
-    """Compute SHA256 hash of a file."""
     sha256 = hashlib.sha256()
     with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -49,7 +54,6 @@ def compute_file_hash(filepath: str) -> str:
 
 
 def font_exists(family_name: str, style_name: str) -> bool:
-    """Check if a font with the given family+style already exists."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -61,22 +65,19 @@ def font_exists(family_name: str, style_name: str) -> bool:
     return count > 0
 
 
-def insert_font(
-    family_name: str,
-    style_name: str,
-    fmt: str,
-    file_size: int,
-    file_hash: str,
-    stored_filename: str,
-    original_filename: str,
-) -> int:
-    """Insert a new font record and return its ID."""
+def insert_font(family_name, style_name, fmt, file_size, file_hash,
+                stored_filename, original_filename, cjk_info=None, subfonts_info=None) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO fonts (family_name, style_name, format, file_size, file_hash, stored_filename, original_filename)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (family_name, style_name, fmt, file_size, file_hash, stored_filename, original_filename),
+        """INSERT INTO fonts
+           (family_name, style_name, format, file_size, file_hash,
+            stored_filename, original_filename, cjk_info, subfonts_info)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (family_name, style_name, fmt, file_size, file_hash,
+         stored_filename, original_filename,
+         json.dumps(cjk_info, ensure_ascii=False) if cjk_info else None,
+         json.dumps(subfonts_info, ensure_ascii=False) if subfonts_info else None),
     )
     font_id = cursor.lastrowid
     conn.commit()
@@ -85,7 +86,6 @@ def insert_font(
 
 
 def get_all_fonts() -> list:
-    """Get all font records ordered by creation date."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM fonts ORDER BY created_at DESC")
@@ -95,7 +95,6 @@ def get_all_fonts() -> list:
 
 
 def get_font_by_id(font_id: int) -> Optional[dict]:
-    """Get a font record by ID."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM fonts WHERE id=?", (font_id,))
@@ -105,7 +104,6 @@ def get_font_by_id(font_id: int) -> Optional[dict]:
 
 
 def delete_font(font_id: int) -> Optional[dict]:
-    """Delete a font record and return it."""
     font = get_font_by_id(font_id)
     if font:
         conn = get_connection()

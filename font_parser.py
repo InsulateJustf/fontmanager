@@ -175,7 +175,7 @@ def _find_common_ttc_name(all_names: List[Tuple[str, str]]) -> Optional[str]:
 
 
 def _parse_ttc(filepath: str) -> dict:
-    ttc = TTCollection(filepath)
+    ttc = TTCollection(filepath, lazy=True)
     try:
         all_family_names = []
         style_name = "Regular"
@@ -242,7 +242,7 @@ def generate_filename(family_name: str, style_name: str, ext: str) -> str:
 
 def get_ttc_subfonts(filepath: str) -> list:
     """Get metadata for all sub-fonts in a TTC, grouped by region+weight."""
-    ttc = TTCollection(filepath)
+    ttc = TTCollection(filepath, lazy=True)
     results = []
     try:
         for i, font in enumerate(ttc):
@@ -314,12 +314,12 @@ def _detect_name_langs(font) -> dict:
 def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
     """Analyze CJK support.
 
-    For TTC files: scans ALL sub-fonts to determine overall support,
-    then checks the specific sub-font for warnings.
+    Optimization: for TTC files, only sample first few sub-fonts for cmap
+    (all sub-fonts share glyph set) and scan name tables (fast, lightweight).
     """
     try:
         if filepath.lower().endswith(".ttc"):
-            ttc = TTCollection(filepath)
+            ttc = TTCollection(filepath, lazy=True)
             if font_number >= len(ttc):
                 font_number = 0
         else:
@@ -332,37 +332,42 @@ def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
 
     try:
         if ttc is not None:
-            # Scan ALL sub-fonts for overall CJK support
-            has_cjk = False
-            cjk_count = 0
+            total = len(ttc)
+            # cmap: all sub-fonts share the same glyph set, check first one only
+            first_font = ttc[0]
+            cmap = first_font.getBestCmap()
+            has_cjk = any(_CJK_START <= cp <= _CJK_END for cp in cmap) if cmap else False
+            cjk_count = sum(1 for cp in cmap if _CJK_START <= cp <= _CJK_END) if cmap else 0
+
+            # Name table languages: sample up to 5 sub-fonts (covers all regions)
             all_langs = {"sc": False, "tc": False, "ja": False, "ko": False}
-            for sf in ttc:
-                cmap = sf.getBestCmap()
-                if cmap:
-                    cnt = sum(1 for cp in cmap if _CJK_START <= cp <= _CJK_END)
-                    if cnt > 0:
-                        has_cjk = True
-                        cjk_count = max(cjk_count, cnt)
+            sample_count = min(total, 5)
+            step = max(1, total // sample_count)
+            for i in range(0, total, step):
+                if i >= sample_count * step:
+                    break
+                sf = ttc[i]
                 sl = _detect_name_langs(sf)
                 for k in all_langs:
                     if sl[k]:
                         all_langs[k] = True
+                # Early exit if all detected
+                if all(all_langs.values()):
+                    break
 
-            # Check specific sub-font for warning
-            target_font = ttc[font_number]
-            target_langs = _detect_name_langs(target_font)
+            # Check target sub-font for warning
+            target_langs = _detect_name_langs(ttc[font_number])
+
+            # OS/2 from first sub-font
+            os2 = ttc[0].get("OS/2")
         else:
             cmap = font.getBestCmap()
             has_cjk = any(_CJK_START <= cp <= _CJK_END for cp in cmap) if cmap else False
             cjk_count = sum(1 for cp in cmap if _CJK_START <= cp <= _CJK_END) if cmap else 0
             all_langs = _detect_name_langs(font)
             target_langs = all_langs
-
-        # OS/2 code page hints
-        if ttc is not None:
-            os2 = ttc[0].get("OS/2")
-        else:
             os2 = font.get("OS/2")
+
         cp1 = getattr(os2, "ulCodePageRange1", 0) if os2 else 0
 
         supports_sc = all_langs["sc"] or bool(cp1 & (1 << 20))
@@ -379,7 +384,6 @@ def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
         if supports_ja: languages.append("ja")
         if supports_ko: languages.append("ko")
 
-        # Warning: target sub-font has CJK but only Japanese in name table
         warning = None
         if has_cjk and target_langs["ja"] and not target_langs["sc"] and not target_langs["tc"]:
             if not bool(cp1 & (1 << 20)) and not bool(cp1 & (1 << 19)):
@@ -394,3 +398,4 @@ def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
             ttc.close()
         else:
             font.close()
+
