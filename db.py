@@ -16,6 +16,11 @@ def get_connection():
     return conn
 
 
+def _table_exists(cursor, table_name):
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    return cursor.fetchone() is not None
+
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -35,11 +40,13 @@ def init_db():
             UNIQUE(family_name, style_name)
         )
     """)
-    existing = {row[1] for row in cursor.execute("PRAGMA table_info(fonts)").fetchall()}
-    if "cjk_info" not in existing:
-        cursor.execute("ALTER TABLE fonts ADD COLUMN cjk_info TEXT")
-    if "subfonts_info" not in existing:
-        cursor.execute("ALTER TABLE fonts ADD COLUMN subfonts_info TEXT")
+    # Migrate: add columns if table already existed
+    if _table_exists(cursor, "fonts"):
+        existing = {row[1] for row in cursor.execute("PRAGMA table_info(fonts)").fetchall()}
+        if "cjk_info" not in existing:
+            cursor.execute("ALTER TABLE fonts ADD COLUMN cjk_info TEXT")
+        if "subfonts_info" not in existing:
+            cursor.execute("ALTER TABLE fonts ADD COLUMN subfonts_info TEXT")
     conn.commit()
     conn.close()
 
@@ -98,7 +105,6 @@ def insert_font(family_name, style_name, fmt, file_size, file_hash,
 
 def replace_font(font_id, family_name, style_name, fmt, file_size, file_hash,
                  stored_filename, original_filename, cjk_info=None, subfonts_info=None):
-    """Update an existing font record (replace with more complete version)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -119,6 +125,12 @@ def replace_font(font_id, family_name, style_name, fmt, file_size, file_hash,
 def get_all_fonts() -> list:
     conn = get_connection()
     cursor = conn.cursor()
+    # Auto-create table if missing (recovery from corrupted/old DB)
+    if not _table_exists(cursor, "fonts"):
+        conn.close()
+        init_db()
+        conn = get_connection()
+        cursor = conn.cursor()
     cursor.execute("SELECT * FROM fonts ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
