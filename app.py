@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 from waitress import serve
 
 import db
-from font_parser import parse_font, generate_filename, detect_format, get_ttc_subfonts
+from font_parser import parse_font, generate_filename, detect_format, get_ttc_subfonts, get_cjk_support
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -149,13 +149,11 @@ def get_font_file(font_id):
     if not os.path.exists(file_path):
         return jsonify({"status": "error", "message": "Font file missing"}), 404
 
-    # ?download=1 triggers attachment download
     as_download = request.args.get("download") == "1"
     if as_download:
         download_name = font["original_filename"]
         return send_file(file_path, as_attachment=True, download_name=download_name)
 
-    # ?subfont=N serves a specific sub-font from TTC as standalone TTF
     subfont_index = request.args.get("subfont")
     if subfont_index is not None and font["format"] == "ttc":
         try:
@@ -180,7 +178,6 @@ def get_font_file(font_id):
             return jsonify({"status": "error",
                             "message": "Failed to extract subfont: {}".format(e)}), 500
 
-    # Otherwise serve inline (for @font-face preview)
     mime_map = {"ttf": "font/ttf", "otf": "font/otf", "ttc": "font/collection"}
     mime = mime_map.get(font["format"], "application/octet-stream")
     return send_file(file_path, mimetype=mime)
@@ -208,6 +205,35 @@ def list_subfonts(font_id):
     except Exception as e:
         return jsonify({"status": "error",
                         "message": "Failed to read TTC: {}".format(e)}), 500
+
+
+@app.route("/api/fonts/<int:font_id>/cjk", methods=["GET"])
+def check_cjk(font_id):
+    """Check CJK support for a font."""
+    font = db.get_font_by_id(font_id)
+    if font is None:
+        return jsonify({"status": "error", "message": "Font not found"}), 404
+
+    file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+    if not os.path.exists(file_path):
+        return jsonify({"status": "error", "message": "Font file missing"}), 404
+
+    # For TTC, check first sub-font (or ?subfont=N)
+    subfont_index = request.args.get("subfont")
+    if subfont_index is not None:
+        try:
+            subfont_index = int(subfont_index)
+        except ValueError:
+            subfont_index = 0
+    else:
+        subfont_index = 0
+
+    try:
+        result = get_cjk_support(file_path, font_number=subfont_index)
+        return jsonify({"status": "ok", "cjk": result})
+    except Exception as e:
+        return jsonify({"status": "error",
+                        "message": "Failed to analyze font: {}".format(e)}), 500
 
 
 def parse_args():

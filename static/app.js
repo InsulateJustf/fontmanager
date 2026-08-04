@@ -1,8 +1,6 @@
 (function () {
     "use strict";
 
-    // ─── Elements ───────────────────────────────────────────────────────────
-
     var dropzone      = document.getElementById("dropzone");
     var fileInput     = document.getElementById("fileInput");
     var folderInput   = document.getElementById("folderInput");
@@ -15,7 +13,6 @@
     var fontCount     = document.getElementById("fontCount");
     var refreshBtn    = document.getElementById("refreshBtn");
 
-    // Preview modal
     var previewModal     = document.getElementById("previewModal");
     var previewClose     = document.getElementById("previewClose");
     var previewTitle     = document.getElementById("previewTitle");
@@ -25,110 +22,58 @@
     var previewArea      = document.getElementById("previewArea");
     var subfontRow       = document.getElementById("subfontRow");
     var subfontSelect    = document.getElementById("subfontSelect");
+    var cjkWarning       = document.getElementById("cjkWarning");
 
     var fontFaceCounter = 0;
     var currentPreviewFontId = null;
-
-    // ─── Button → trigger hidden input ──────────────────────────────────────
+    var allSubfonts = []; // Store full subfont list for filtering
 
     fileBtn.addEventListener("click", function () { fileInput.click(); });
     folderBtn.addEventListener("click", function () { folderInput.click(); });
-
     fileInput.addEventListener("change", function () {
-        if (fileInput.files.length > 0) {
-            uploadFiles(fileInput.files);
-            fileInput.value = "";
-        }
+        if (fileInput.files.length > 0) { uploadFiles(fileInput.files); fileInput.value = ""; }
     });
-
     folderInput.addEventListener("change", function () {
-        if (folderInput.files.length > 0) {
-            uploadFiles(folderInput.files);
-            folderInput.value = "";
-        }
+        if (folderInput.files.length > 0) { uploadFiles(folderInput.files); folderInput.value = ""; }
     });
-
-    // ─── Block browser default drag-n-drop ──────────────────────────────────
 
     window.addEventListener("dragover", function (e) { e.preventDefault(); });
     window.addEventListener("drop",     function (e) { e.preventDefault(); });
 
-    // ─── Dropzone ───────────────────────────────────────────────────────────
-
     var dragDepth = 0;
-
-    dropzone.addEventListener("dragenter", function (e) {
-        e.preventDefault();
-        dragDepth++;
-        dropzone.classList.add("dragover");
-    });
-
-    dropzone.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    });
-
-    dropzone.addEventListener("dragleave", function (e) {
-        e.preventDefault();
-        dragDepth--;
-        if (dragDepth <= 0) { dragDepth = 0; dropzone.classList.remove("dragover"); }
-    });
-
+    dropzone.addEventListener("dragenter", function (e) { e.preventDefault(); dragDepth++; dropzone.classList.add("dragover"); });
+    dropzone.addEventListener("dragover",  function (e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; });
+    dropzone.addEventListener("dragleave", function (e) { e.preventDefault(); dragDepth--; if (dragDepth <= 0) { dragDepth = 0; dropzone.classList.remove("dragover"); } });
     dropzone.addEventListener("drop", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dragDepth = 0;
-        dropzone.classList.remove("dragover");
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            uploadFiles(e.dataTransfer.files);
-        }
+        e.preventDefault(); e.stopPropagation(); dragDepth = 0; dropzone.classList.remove("dragover");
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files);
     });
-
-    // ─── Upload ─────────────────────────────────────────────────────────────
 
     function uploadFiles(fileList) {
         var fd = new FormData();
         var fontExts = [".ttf", ".otf", ".ttc"];
         var added = 0;
-
         for (var i = 0; i < fileList.length; i++) {
             var nm = fileList[i].name.toLowerCase();
             for (var j = 0; j < fontExts.length; j++) {
                 if (nm.endsWith(fontExts[j])) { fd.append("files", fileList[i]); added++; break; }
             }
         }
-
-        if (added === 0) {
-            showMessage("没有找到 TTF / OTF / TTC 文件", "error");
-            return;
-        }
-
+        if (added === 0) { showMessage("没有找到 TTF / OTF / TTC 文件", "error"); return; }
         showMessage("正在上传 " + added + " 个文件…", "loading");
-
         fetch("/api/upload", { method: "POST", body: fd })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.status === "ok" && data.results) {
-                    renderResults(data.results);
-                    loadFontList();
-                } else {
-                    showMessage(data.message || "上传失败", "error");
-                }
+                if (data.status === "ok" && data.results) { renderResults(data.results); loadFontList(); }
+                else { showMessage(data.message || "上传失败", "error"); }
             })
-            .catch(function (err) {
-                showMessage("网络错误: " + err.message, "error");
-            });
+            .catch(function (err) { showMessage("网络错误: " + err.message, "error"); });
     }
-
-    // ─── Results ────────────────────────────────────────────────────────────
 
     function showMessage(msg, type) {
         uploadResults.style.display = "block";
         var icon = type === "loading" ? "⏳" : "❌";
-        resultsList.innerHTML =
-            '<div class="result-item ' + type + '">' +
-            '<span class="result-icon">' + icon + '</span>' +
-            '<span class="result-message">' + escapeHtml(msg) + '</span></div>';
+        resultsList.innerHTML = '<div class="result-item ' + type + '"><span class="result-icon">' + icon + '</span><span class="result-message">' + escapeHtml(msg) + '</span></div>';
     }
 
     function renderResults(results) {
@@ -139,21 +84,16 @@
             var icon = r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : "❌";
             var el = document.createElement("div");
             el.className = "result-item " + r.status;
-            el.innerHTML =
-                '<span class="result-icon">' + icon + '</span>' +
-                '<span class="result-filename">' + escapeHtml(r.filename) + '</span>' +
-                '<span class="result-message">' + escapeHtml(r.message) + '</span>';
+            el.innerHTML = '<span class="result-icon">' + icon + '</span><span class="result-filename">' + escapeHtml(r.filename) + '</span><span class="result-message">' + escapeHtml(r.message) + '</span>';
             resultsList.appendChild(el);
         }
     }
-
-    // ─── Font list ──────────────────────────────────────────────────────────
 
     function loadFontList() {
         fetch("/api/fonts")
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.status === "ok") renderFontList(data.fonts);
+                if (data.status === "ok") { renderFontList(data.fonts); loadAllCjkInfo(data.fonts); }
             })
             .catch(function (e) { console.error("load fonts failed:", e); });
     }
@@ -162,7 +102,6 @@
         fontTableBody.innerHTML = "";
         fontCount.textContent = fonts.length > 0 ? "共 " + fonts.length + " 个" : "";
         emptyState.style.display = fonts.length === 0 ? "block" : "none";
-
         for (var i = 0; i < fonts.length; i++) {
             var f = fonts[i];
             var tr = document.createElement("tr");
@@ -170,16 +109,43 @@
             tr.innerHTML =
                 "<td>" + escapeHtml(f.family_name) + "</td>" +
                 "<td>" + escapeHtml(f.style_name) + "</td>" +
+                '<td id="cjk-' + f.id + '"><span class="cjk-badge cjk-badge-none">检测中…</span></td>' +
                 "<td>" + escapeHtml(f.format.toUpperCase()) + "</td>" +
                 "<td>" + fmtSize(f.file_size) + "</td>" +
-                "<td>" + fmtDate(f.created_at) + "</td>" +
-                '<td>' +
-                    '<button class="btn btn-info" onclick="FM.preview(' + f.id + ",'" + label.replace(/'/g, "\\'") + "','" + f.format + "')\">预览</button> " +
-                    '<button class="btn btn-success" onclick="FM.download(' + f.id + ')">下载</button> ' +
-                    '<button class="btn btn-danger" onclick="FM.del(' + f.id + ",'" + label.replace(/'/g, "\\'") + "')\">删除</button>" +
-                '</td>';
+                '<td><button class="btn btn-info" onclick="FM.preview(' + f.id + ",'" + label.replace(/'/g, "\\'") + "','" + f.format + "')\">预览</button> " +
+                '<button class="btn btn-success" onclick="FM.download(' + f.id + ')">下载</button> ' +
+                '<button class="btn btn-danger" onclick="FM.del(' + f.id + ",'" + label.replace(/'/g, "\\'") + "')\">删除</button></td>";
             fontTableBody.appendChild(tr);
         }
+    }
+
+    function loadAllCjkInfo(fonts) {
+        for (var i = 0; i < fonts.length; i++) {
+            (function (fontId) {
+                fetch("/api/fonts/" + fontId + "/cjk")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) { if (data.status === "ok") renderCjkCell(fontId, data.cjk); })
+                    .catch(function () {});
+            })(fonts[i].id);
+        }
+    }
+
+    function renderCjkCell(fontId, cjk) {
+        var cell = document.getElementById("cjk-" + fontId);
+        if (!cell) return;
+        var html = '<div class="cjk-badges">';
+        if (!cjk.has_cjk) {
+            html += '<span class="cjk-badge cjk-badge-none">无中文</span>';
+        } else {
+            if (cjk.supports_sc) html += '<span class="cjk-badge cjk-badge-sc">简</span>';
+            if (cjk.supports_tc) html += '<span class="cjk-badge cjk-badge-tc">繁</span>';
+            if (cjk.supports_ja) html += '<span class="cjk-badge cjk-badge-ja">日</span>';
+            if (cjk.supports_ko) html += '<span class="cjk-badge cjk-badge-ko">韩</span>';
+            if (!cjk.supports_sc && !cjk.supports_tc && !cjk.supports_ja && !cjk.supports_ko) html += '<span class="cjk-badge cjk-badge-sc">CJK</span>';
+        }
+        html += '</div>';
+        if (cjk.warning) html += '<div class="cjk-warning-inline">⚠️ ' + escapeHtml(cjk.warning) + '</div>';
+        cell.innerHTML = html;
     }
 
     // ─── Preview ────────────────────────────────────────────────────────────
@@ -190,43 +156,28 @@
         previewText.value = "字体预览 FontPreview 123";
         previewSize.value = 36;
         previewSizeLabel.textContent = "36px";
-
-        // Reset sub-font selector
+        cjkWarning.style.display = "none";
         subfontSelect.innerHTML = "";
         subfontRow.style.display = "none";
 
         if (fontFormat === "ttc") {
-            // Load sub-font list for TTC
             fetch("/api/fonts/" + fontId + "/subfonts")
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                    if (data.status === "ok" && data.subfonts) {
-                        var subs = data.subfonts;
-                        if (subs.length > 1) {
-                            // Show sub-font selector
-                            for (var i = 0; i < subs.length; i++) {
-                                var opt = document.createElement("option");
-                                opt.value = subs[i].index;
-                                var labelText = subs[i].family_name;
-                                if (subs[i].style_name) {
-                                    labelText += " — " + subs[i].style_name;
-                                }
-                                opt.textContent = labelText;
-                                subfontSelect.appendChild(opt);
-                            }
+                    if (data.status === "ok" && data.subfonts && data.subfonts.length > 0) {
+                        allSubfonts = data.subfonts;
+                        if (allSubfonts.length > 1) {
+                            buildSubfontSelector(allSubfonts);
                             subfontRow.style.display = "flex";
                         }
-                        // Load first sub-font
-                        loadPreviewFont(fontId, 0);
+                        loadPreviewFont(fontId, allSubfonts[0].index);
+                        loadCjkForSubfont(fontId, allSubfonts[0].index);
                     }
                 })
-                .catch(function () {
-                    // Fallback: load whole TTC
-                    loadPreviewFont(fontId, null);
-                });
+                .catch(function () { loadPreviewFont(fontId, null); });
         } else {
-            // TTF/OTF: load directly
             loadPreviewFont(fontId, null);
+            loadCjkForSubfont(fontId, 0);
         }
 
         previewArea.style.fontSize = "36px";
@@ -234,99 +185,115 @@
         previewModal.style.display = "flex";
     }
 
+    function buildSubfontSelector(subfonts) {
+        subfontSelect.innerHTML = "";
+
+        // Check if sub-fonts have region info (multi-region TTC like Noto CJK)
+        var regions = {};
+        for (var i = 0; i < subfonts.length; i++) {
+            var sf = subfonts[i];
+            if (sf.region) regions[sf.region] = true;
+        }
+        var hasRegions = Object.keys(regions).length > 1;
+
+        if (hasRegions) {
+            // Group by region, then by weight within each region
+            var grouped = {};
+            for (var i = 0; i < subfonts.length; i++) {
+                var sf = subfonts[i];
+                var region = sf.region || "Other";
+                if (!grouped[region]) grouped[region] = [];
+                grouped[region].push(sf);
+            }
+
+            // Build optgroups
+            var regionNames = { SC: "简体中文 (SC)", TC: "繁体中文 (TC)", HK: "香港 (HK)", JP: "日文 (JP)", KR: "韩文 (KR)", Other: "其他" };
+            var regionOrder = ["SC", "TC", "HK", "JP", "KR", "Other"];
+            for (var r = 0; r < regionOrder.length; r++) {
+                var regionKey = regionOrder[r];
+                if (!grouped[regionKey]) continue;
+                var optgroup = document.createElement("optgroup");
+                optgroup.label = regionNames[regionKey] || regionKey;
+                var subs = grouped[regionKey];
+                for (var j = 0; j < subs.length; j++) {
+                    var opt = document.createElement("option");
+                    opt.value = subs[j].index;
+                    opt.textContent = subs[j].weight || subs[j].style_name || "Regular";
+                    optgroup.appendChild(opt);
+                }
+                subfontSelect.appendChild(optgroup);
+            }
+        } else {
+            // Single region or no region info — flat list
+            for (var i = 0; i < subfonts.length; i++) {
+                var opt = document.createElement("option");
+                opt.value = subfonts[i].index;
+                var label = subfonts[i].family_name;
+                if (subfonts[i].style_name) label += " — " + subfonts[i].style_name;
+                opt.textContent = label;
+                subfontSelect.appendChild(opt);
+            }
+        }
+    }
+
     function loadPreviewFont(fontId, subfontIndex) {
         fontFaceCounter++;
         var faceName = "PreviewFont_" + fontFaceCounter;
         var fontUrl = "/api/fonts/" + fontId + "/file";
-        if (subfontIndex !== null && subfontIndex !== undefined) {
-            fontUrl += "?subfont=" + subfontIndex;
-        }
+        if (subfontIndex !== null && subfontIndex !== undefined) fontUrl += "?subfont=" + subfontIndex;
 
-        // Remove previous preview style
         var oldStyle = document.getElementById("previewFontStyle");
         if (oldStyle) oldStyle.remove();
-
         var style = document.createElement("style");
         style.id = "previewFontStyle";
-        style.textContent =
-            "@font-face {" +
-            "  font-family: '" + faceName + "';" +
-            "  src: url('" + fontUrl + "');" +
-            "}" +
-            ".preview-area {" +
-            "  font-family: '" + faceName + "', sans-serif;" +
-            "}";
+        style.textContent = "@font-face { font-family: '" + faceName + "'; src: url('" + fontUrl + "'); }" +
+                            ".preview-area { font-family: '" + faceName + "', sans-serif; }";
         document.head.appendChild(style);
     }
 
-    // Sub-font selector change
+    function loadCjkForSubfont(fontId, subfontIndex) {
+        cjkWarning.style.display = "none";
+        fetch("/api/fonts/" + fontId + "/cjk" + (subfontIndex !== null ? "?subfont=" + subfontIndex : ""))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.status === "ok" && data.cjk.warning) {
+                    cjkWarning.textContent = "⚠️ " + data.cjk.warning;
+                    cjkWarning.style.display = "block";
+                }
+            })
+            .catch(function () {});
+    }
+
     subfontSelect.addEventListener("change", function () {
         var idx = parseInt(subfontSelect.value, 10);
         loadPreviewFont(currentPreviewFontId, idx);
+        loadCjkForSubfont(currentPreviewFontId, idx);
     });
 
-    // Modal close
-    previewClose.addEventListener("click", function () {
-        previewModal.style.display = "none";
-    });
-
-    previewModal.querySelector(".modal-overlay").addEventListener("click", function () {
-        previewModal.style.display = "none";
-    });
-
-    previewText.addEventListener("input", function () {
-        previewArea.textContent = previewText.value || "字体预览 FontPreview 123";
-    });
-
+    previewClose.addEventListener("click", function () { previewModal.style.display = "none"; });
+    previewModal.querySelector(".modal-overlay").addEventListener("click", function () { previewModal.style.display = "none"; });
+    previewText.addEventListener("input", function () { previewArea.textContent = previewText.value || "字体预览 FontPreview 123"; });
     previewSize.addEventListener("input", function () {
         var size = previewSize.value + "px";
         previewArea.style.fontSize = size;
         previewSizeLabel.textContent = size;
     });
 
-    // ─── Download ───────────────────────────────────────────────────────────
-
-    function download(fontId) {
-        window.open("/api/fonts/" + fontId + "/file?download=1", "_blank");
-    }
-
-    // ─── Delete ─────────────────────────────────────────────────────────────
+    function download(fontId) { window.open("/api/fonts/" + fontId + "/file?download=1", "_blank"); }
 
     function del(id, name) {
         if (!confirm("确定删除 \"" + name + "\" ？")) return;
         fetch("/api/fonts/" + id, { method: "DELETE" })
             .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.status === "ok") loadFontList();
-                else alert("删除失败: " + (d.message || "未知错误"));
-            })
+            .then(function (d) { if (d.status === "ok") loadFontList(); else alert("删除失败: " + (d.message || "未知错误")); })
             .catch(function (e) { alert("删除失败: " + e.message); });
     }
 
     window.FM = { del: del, preview: preview, download: download };
 
-    // ─── Helpers ────────────────────────────────────────────────────────────
-
-    function escapeHtml(t) {
-        var d = document.createElement("div");
-        d.textContent = t || "";
-        return d.innerHTML;
-    }
-
-    function fmtSize(b) {
-        if (b < 1024) return b + " B";
-        if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
-        return (b / 1048576).toFixed(1) + " MB";
-    }
-
-    function fmtDate(ts) {
-        if (!ts) return "";
-        var d = new Date(ts);
-        return d.toLocaleDateString("zh-CN") + " " +
-               d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-    }
-
-    // ─── Init ───────────────────────────────────────────────────────────────
+    function escapeHtml(t) { var d = document.createElement("div"); d.textContent = t || ""; return d.innerHTML; }
+    function fmtSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(1) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
+    function fmtDate(ts) { if (!ts) return ""; var d = new Date(ts); return d.toLocaleDateString("zh-CN") + " " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); }
 
     refreshBtn.addEventListener("click", loadFontList);
     loadFontList();

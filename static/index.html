@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FontManager — 字体管理</title>
-    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
     <div class="container">
@@ -23,12 +23,8 @@
                 </div>
             </div>
             <div class="upload-buttons">
-                <button type="button" id="fileBtn" class="btn btn-primary upload-btn">
-                    📎 选择文件上传
-                </button>
-                <button type="button" id="folderBtn" class="btn btn-secondary upload-btn">
-                    📂 选择文件夹上传
-                </button>
+                <button type="button" id="fileBtn" class="btn btn-primary upload-btn">📎 选择文件上传</button>
+                <button type="button" id="folderBtn" class="btn btn-secondary upload-btn">📂 选择文件夹上传</button>
             </div>
             <input type="file" id="fileInput" multiple accept=".ttf,.otf,.ttc" style="display:none">
             <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
@@ -53,9 +49,9 @@
                         <tr>
                             <th>字体名称</th>
                             <th>样式</th>
+                            <th>中文支持</th>
                             <th>格式</th>
                             <th>文件大小</th>
-                            <th>入库时间</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -78,11 +74,12 @@
                 <button type="button" id="previewClose" class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
-                <!-- Sub-font selector (shown for TTC files) -->
                 <div id="subfontRow" class="preview-subfont-row" style="display:none;">
                     <label>字型：</label>
                     <select id="subfontSelect" class="preview-select"></select>
                 </div>
+                <!-- CJK warning banner -->
+                <div id="cjkWarning" class="cjk-warning" style="display:none;"></div>
                 <div class="preview-controls">
                     <input type="text" id="previewText" class="preview-input"
                            value="字体预览 FontPreview 123" placeholder="输入预览文字…">
@@ -99,6 +96,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=7"></script>
+    <script src="/static/app.js?v=8"></script>
 </body>
 </html>

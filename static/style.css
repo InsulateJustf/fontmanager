@@ -427,3 +427,48 @@ header h1 {
 .preview-select:focus {
     border-color: #4a90d9;
 }
+
+/* CJK Support badges */
+.cjk-badges {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+
+.cjk-badge {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.cjk-badge-sc { background: #e6f4ea; color: #1e7e34; }
+.cjk-badge-tc { background: #e8f0fe; color: #1a56db; }
+.cjk-badge-ja { background: #fef3e2; color: #b45309; }
+.cjk-badge-ko { background: #f3e8ff; color: #7c3aed; }
+.cjk-badge-none { background: #f3f4f6; color: #9ca3af; }
+
+.cjk-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.cjk-warning-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-top: 0.3rem;
+}
