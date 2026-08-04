@@ -8,8 +8,8 @@ cd "$SCRIPT_DIR"
 
 # ─── 参数解析 ────────────────────────────────────────────────────────────────
 
-PORT="${FONT_PORT:-8080}"
-STORAGE=""
+PORT="8080"
+STORAGE="./fonts"
 
 usage() {
     echo "Usage: $0 [-s storage_dir] [-p port]"
@@ -41,11 +41,8 @@ source venv/bin/activate
 
 # ─── 依赖安装 ────────────────────────────────────────────────────────────────
 
-if [ ! -f "venv/.deps_installed" ]; then
-    echo "📦 Installing dependencies..."
-    pip install -r requirements.txt -q
-    touch venv/.deps_installed
-fi
+echo "📦 Checking dependencies..."
+pip install -r requirements.txt -q
 
 # ─── 启动服务 ────────────────────────────────────────────────────────────────
 
@@ -54,14 +51,8 @@ echo "╔═══════════════════════�
 echo "║         🔤 FontManager                   ║"
 echo "╠══════════════════════════════════════════╣"
 echo "║  URL: http://localhost:${PORT}             ║"
+echo "║  Storage: ${STORAGE}                       "
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
-CMD="python3 app.py --port $PORT"
-if [ -n "$STORAGE" ]; then
-    CMD="$CMD --storage $STORAGE"
-fi
-
-echo "🚀 Starting: $CMD"
-echo ""
-exec $CMD
+exec python3 app.py --port "$PORT" --storage "$STORAGE"
