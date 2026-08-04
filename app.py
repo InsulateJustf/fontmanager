@@ -21,6 +21,20 @@ FONT_STORAGE = None
 app = Flask(__name__, static_folder="static")
 
 
+# Format completeness ranking: higher = more complete
+_FORMAT_RANK = {"ttc": 3, "otf": 2, "ttf": 1}
+
+
+def _is_more_complete(new_fmt, new_size, old_fmt, old_size):
+    """Check if the new font is more complete than the existing one."""
+    new_rank = _FORMAT_RANK.get(new_fmt, 0)
+    old_rank = _FORMAT_RANK.get(old_fmt, 0)
+    if new_rank != old_rank:
+        return new_rank > old_rank
+    # Same format rank — larger file = more complete
+    return new_size > old_size
+
+
 def get_default_storage():
     if os.name == "nt":
         return DEFAULT_STORAGE_WINDOWS
@@ -69,10 +83,25 @@ def _process_single_file(file_storage):
         style_name = meta["style_name"]
         fmt = meta["format"]
 
-        if db.font_exists(family_name, style_name):
-            return {"filename": original_name, "status": "duplicate",
-                    "message": "Font already exists: {} - {}".format(family_name, style_name),
-                    "family_name": family_name, "style_name": style_name}
+        new_file_size = os.path.getsize(tmp_path)
+
+        # Check for existing font with same family+style
+        existing = db.get_font_by_family_style(family_name, style_name)
+
+        if existing:
+            # Compare completeness
+            if _is_more_complete(fmt, new_file_size, existing["format"], existing["file_size"]):
+                # New font is more complete — replace old one
+                old_path = os.path.join(FONT_STORAGE, existing["stored_filename"])
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                db.delete_font(existing["id"])
+            else:
+                # Old font is more complete — skip
+                return {"filename": original_name, "status": "duplicate",
+                        "message": "已有更完整的版本: {} - {} ({} vs {})".format(
+                            family_name, style_name, existing["format"].upper(), fmt.upper()),
+                        "family_name": family_name, "style_name": style_name}
 
         new_filename = generate_filename(family_name, style_name, ext.lstrip("."))
         dest_path = os.path.join(FONT_STORAGE, new_filename)
@@ -89,7 +118,6 @@ def _process_single_file(file_storage):
         file_size = os.path.getsize(dest_path)
         file_hash = db.compute_file_hash(dest_path)
 
-        # Pre-compute and cache CJK + subfont info (expensive for large TTC)
         cjk_info = None
         subfonts_info = None
         if fmt == "ttc":
@@ -105,10 +133,14 @@ def _process_single_file(file_storage):
             cjk_info=cjk_info, subfonts_info=subfonts_info,
         )
 
+        msg = "Added: {} - {}".format(family_name, style_name)
+        if existing:
+            msg = "Replaced with more complete version: {} - {}".format(family_name, style_name)
+
         return {"filename": original_name, "status": "success",
-                "message": "Added: {} - {}".format(family_name, style_name),
-                "font_id": font_id, "family_name": family_name,
-                "style_name": style_name, "stored_filename": new_filename}
+                "message": msg, "font_id": font_id,
+                "family_name": family_name, "style_name": style_name,
+                "stored_filename": new_filename}
 
     except ValueError as e:
         return {"filename": original_name, "status": "error", "message": str(e)}
@@ -156,7 +188,8 @@ def get_font_file(font_id):
 
     as_download = request.args.get("download") == "1"
     if as_download:
-        return send_file(file_path, as_attachment=True, download_name=font["original_filename"])
+        # Use stored_filename (renamed) for download
+        return send_file(file_path, as_attachment=True, download_name=font["stored_filename"])
 
     subfont_index = request.args.get("subfont")
     if subfont_index is not None and font["format"] == "ttc":
@@ -172,10 +205,8 @@ def get_font_file(font_id):
 
 
 def _extract_ttc_subfont(file_path, subfont_index):
-    """Extract a single sub-font from TTC using lazy loading."""
     from fontTools.ttLib import TTCollection
     try:
-        # Use lazy=True to avoid loading all sub-fonts into memory
         ttc = TTCollection(file_path, lazy=True)
         if subfont_index < 0 or subfont_index >= len(ttc):
             return jsonify({"status": "error",
@@ -192,7 +223,6 @@ def _extract_ttc_subfont(file_path, subfont_index):
 
 @app.route("/api/fonts/<int:font_id>/subfonts", methods=["GET"])
 def list_subfonts(font_id):
-    """List sub-fonts — serve from cache if available."""
     font = db.get_font_by_id(font_id)
     if font is None:
         return jsonify({"status": "error", "message": "Font not found"}), 404
@@ -203,14 +233,12 @@ def list_subfonts(font_id):
              "style_name": font["style_name"], "region": "", "weight": ""}
         ]})
 
-    # Use cached subfonts_info from DB
     cached = font.get("subfonts_info")
     if cached:
         if isinstance(cached, str):
             cached = json.loads(cached)
         return jsonify({"status": "ok", "subfonts": cached})
 
-    # Fallback: parse on the fly
     file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
     if not os.path.exists(file_path):
         return jsonify({"status": "error", "message": "Font file missing"}), 404
@@ -223,19 +251,16 @@ def list_subfonts(font_id):
 
 @app.route("/api/fonts/<int:font_id>/cjk", methods=["GET"])
 def check_cjk(font_id):
-    """Check CJK support — serve from cache if available."""
     font = db.get_font_by_id(font_id)
     if font is None:
         return jsonify({"status": "error", "message": "Font not found"}), 404
 
-    # Use cached cjk_info from DB
     cached = font.get("cjk_info")
     if cached:
         if isinstance(cached, str):
             cached = json.loads(cached)
         return jsonify({"status": "ok", "cjk": cached})
 
-    # Fallback: parse on the fly
     file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
     if not os.path.exists(file_path):
         return jsonify({"status": "error", "message": "Font file missing"}), 404

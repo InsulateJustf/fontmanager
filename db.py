@@ -35,7 +35,6 @@ def init_db():
             UNIQUE(family_name, style_name)
         )
     """)
-    # Migrate: add columns if missing
     existing = {row[1] for row in cursor.execute("PRAGMA table_info(fonts)").fetchall()}
     if "cjk_info" not in existing:
         cursor.execute("ALTER TABLE fonts ADD COLUMN cjk_info TEXT")
@@ -65,6 +64,18 @@ def font_exists(family_name: str, style_name: str) -> bool:
     return count > 0
 
 
+def get_font_by_family_style(family_name: str, style_name: str) -> Optional[dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM fonts WHERE LOWER(family_name)=LOWER(?) AND LOWER(style_name)=LOWER(?)",
+        (family_name.strip(), style_name.strip()),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def insert_font(family_name, style_name, fmt, file_size, file_hash,
                 stored_filename, original_filename, cjk_info=None, subfonts_info=None) -> int:
     conn = get_connection()
@@ -83,6 +94,26 @@ def insert_font(family_name, style_name, fmt, file_size, file_hash,
     conn.commit()
     conn.close()
     return font_id
+
+
+def replace_font(font_id, family_name, style_name, fmt, file_size, file_hash,
+                 stored_filename, original_filename, cjk_info=None, subfonts_info=None):
+    """Update an existing font record (replace with more complete version)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """UPDATE fonts SET
+           family_name=?, style_name=?, format=?, file_size=?, file_hash=?,
+           stored_filename=?, original_filename=?, cjk_info=?, subfonts_info=?
+           WHERE id=?""",
+        (family_name, style_name, fmt, file_size, file_hash,
+         stored_filename, original_filename,
+         json.dumps(cjk_info, ensure_ascii=False) if cjk_info else None,
+         json.dumps(subfonts_info, ensure_ascii=False) if subfonts_info else None,
+         font_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_all_fonts() -> list:
