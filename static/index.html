@@ -10,17 +10,28 @@
     <div class="container">
         <header>
             <h1>🔤 FontManager</h1>
-            <p class="subtitle">拖拽字体文件到下方区域，自动入库管理</p>
+            <p class="subtitle">拖拽或选择字体文件上传，自动入库管理</p>
         </header>
 
-        <!-- Drop Zone -->
-        <div id="dropzone" class="dropzone">
-            <div class="dropzone-content">
-                <span class="dropzone-icon">📁</span>
-                <p>将字体文件拖拽到此处</p>
-                <p class="dropzone-hint">支持 TTF、OTF、TTC 格式</p>
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <div id="dropzone" class="dropzone">
+                <div class="dropzone-content">
+                    <span class="dropzone-icon">📁</span>
+                    <p>将字体文件拖拽到此处</p>
+                    <p class="dropzone-hint">支持 TTF、OTF、TTC 格式</p>
+                </div>
+            </div>
+            <div class="upload-buttons">
+                <label for="fileInput" class="btn btn-primary upload-btn">
+                    📎 选择文件上传
+                </label>
+                <label for="folderInput" class="btn btn-secondary upload-btn">
+                    📂 选择文件夹上传
+                </label>
             </div>
             <input type="file" id="fileInput" multiple accept=".ttf,.otf,.ttc" hidden>
+            <input type="file" id="folderInput" webkitdirectory multiple hidden>
         </div>
 
         <!-- Upload Results -->
@@ -33,6 +44,7 @@
         <div class="font-list-section">
             <div class="section-header">
                 <h2>已入库字体</h2>
+                <span id="fontCount" class="font-count"></span>
                 <button id="refreshBtn" class="btn btn-secondary">🔄 刷新</button>
             </div>
             <div id="fontTable" class="font-table">
@@ -51,7 +63,7 @@
                     </tbody>
                 </table>
                 <div id="emptyState" class="empty-state" style="display:none;">
-                    <p>暂无字体，拖拽文件到上方区域开始添加</p>
+                    <p>暂无字体，上传文件开始添加</p>
                 </div>
             </div>
         </div>

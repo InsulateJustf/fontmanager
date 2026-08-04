@@ -35,19 +35,21 @@ header h1 {
     font-size: 1rem;
 }
 
-/* Drop Zone */
-.dropzone {
-    border: 3px dashed #ccc;
-    border-radius: 12px;
-    padding: 3rem 2rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: #fff;
+/* Upload Section */
+.upload-section {
     margin-bottom: 2rem;
 }
 
-.dropzone:hover,
+.dropzone {
+    border: 3px dashed #ccc;
+    border-radius: 12px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    transition: all 0.2s ease;
+    background: #fff;
+    margin-bottom: 1rem;
+}
+
 .dropzone.dragover {
     border-color: #4a90d9;
     background: #f0f7ff;
@@ -58,19 +60,73 @@ header h1 {
 }
 
 .dropzone-icon {
-    font-size: 3rem;
+    font-size: 2.5rem;
     display: block;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
 }
 
 .dropzone p {
-    font-size: 1.1rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.05rem;
+    margin-bottom: 0.4rem;
 }
 
 .dropzone-hint {
     color: #999;
+    font-size: 0.85rem;
+}
+
+/* Upload Buttons */
+.upload-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.upload-btn {
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.75rem 1.5rem;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
     font-size: 0.9rem;
+    transition: background 0.2s;
+    text-align: center;
+}
+
+.btn-primary {
+    background: #4a90d9;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #3a7bc8;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #d0d0d0;
+}
+
+.btn-danger {
+    background: #ff4d4f;
+    color: #fff;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+.btn-danger:hover {
+    background: #e03e3e;
 }
 
 /* Upload Results */
@@ -90,7 +146,7 @@ header h1 {
 .result-item {
     display: flex;
     align-items: center;
-    padding: 0.75rem 0;
+    padding: 0.6rem 0;
     border-bottom: 1px solid #eee;
     gap: 0.75rem;
 }
@@ -100,14 +156,17 @@ header h1 {
 }
 
 .result-icon {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     flex-shrink: 0;
 }
 
 .result-filename {
-    flex: 1;
+    flex: 0 0 auto;
     font-weight: 500;
-    word-break: break-all;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .result-message {
@@ -129,8 +188,8 @@ header h1 {
 
 .section-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 1rem;
     margin-bottom: 1rem;
 }
 
@@ -138,32 +197,10 @@ header h1 {
     font-size: 1.2rem;
 }
 
-/* Buttons */
-.btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background 0.2s;
-}
-
-.btn-secondary {
-    background: #e0e0e0;
-    color: #333;
-}
-
-.btn-secondary:hover {
-    background: #d0d0d0;
-}
-
-.btn-danger {
-    background: #ff4d4f;
-    color: #fff;
-}
-
-.btn-danger:hover {
-    background: #e03e3e;
+.font-count {
+    color: #999;
+    font-size: 0.85rem;
+    flex: 1;
 }
 
 /* Table */
@@ -174,7 +211,7 @@ header h1 {
 
 .font-table th,
 .font-table td {
-    padding: 0.75rem;
+    padding: 0.7rem 0.5rem;
     text-align: left;
     border-bottom: 1px solid #eee;
 }
@@ -182,7 +219,7 @@ header h1 {
 .font-table th {
     font-weight: 600;
     color: #555;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
@@ -208,5 +245,9 @@ header h1 {
     .font-table th:nth-child(5),
     .font-table td:nth-child(5) {
         display: none;
+    }
+    .upload-buttons {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
