@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FontManager — 字体管理</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔤 FontManager</h1>
+            <p class="subtitle">拖拽字体文件到下方区域，自动入库管理</p>
+        </header>
+
+        <!-- Drop Zone -->
+        <div id="dropzone" class="dropzone">
+            <div class="dropzone-content">
+                <span class="dropzone-icon">📁</span>
+                <p>将字体文件拖拽到此处</p>
+                <p class="dropzone-hint">支持 TTF、OTF、TTC 格式</p>
+            </div>
+            <input type="file" id="fileInput" multiple accept=".ttf,.otf,.ttc" hidden>
+        </div>
+
+        <!-- Upload Results -->
+        <div id="uploadResults" class="upload-results" style="display:none;">
+            <h2>上传结果</h2>
+            <div id="resultsList"></div>
+        </div>
+
+        <!-- Font List -->
+        <div class="font-list-section">
+            <div class="section-header">
+                <h2>已入库字体</h2>
+                <button id="refreshBtn" class="btn btn-secondary">🔄 刷新</button>
+            </div>
+            <div id="fontTable" class="font-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>字体名称</th>
+                            <th>样式</th>
+                            <th>格式</th>
+                            <th>文件大小</th>
+                            <th>入库时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fontTableBody">
+                    </tbody>
+                </table>
+                <div id="emptyState" class="empty-state" style="display:none;">
+                    <p>暂无字体，拖拽文件到上方区域开始添加</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
