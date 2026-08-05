@@ -145,7 +145,8 @@ export function FontTable({
   }
 
   const handleDelete = async (font: Font) => {
-    if (!confirm(`确定删除 "${font.family_name} - ${font.style_name}"？`)) return
+    if (!confirm(`确定要删除 "${font.family_name} - ${font.style_name}"？`)) return
+    if (!confirm(`此操作不可撤销！再次确认删除 "${font.family_name} - ${font.style_name}"？`)) return
     try {
       await deleteFont(font.id)
       onDelete(font.id)
