@@ -31,6 +31,7 @@ export interface SubFont {
   style_name: string
   region: string
   weight: string
+  variant: string
 }
 
 export interface Tag {

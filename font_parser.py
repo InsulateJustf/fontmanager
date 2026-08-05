@@ -70,6 +70,7 @@ _COLLECT_LANGS = _ZH_LANGS | _EN_LANGS
 _WEIGHT_EN = sorted([
     "Thin", "Hairline",
     "Extra Light", "ExtraLight", "Ultra Light", "UltraLight",
+    "Demi Light", "DemiLight",
     "Light", "Regular", "Normal", "Medium",
     "Semi Bold", "SemiBold", "Demi Bold", "DemiBold",
     "Bold", "Extra Bold", "ExtraBold", "Ultra Bold", "UltraBold",
@@ -387,8 +388,15 @@ def get_ttc_subfonts(filepath: str) -> list:
                     weight = w
                     break
 
+            # Detect variant (e.g. Mono) from family name
+            variant = ""
+            family_lower = family.lower()
+            if "mono" in family_lower:
+                variant = "Mono"
+
             results.append({"index": i, "family_name": family,
-                            "style_name": style, "region": region, "weight": weight})
+                            "style_name": style, "region": region,
+                            "weight": weight, "variant": variant})
     finally:
         ttc.close()
     return results

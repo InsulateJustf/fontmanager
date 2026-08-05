@@ -155,7 +155,7 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
                         </SelectItem>
                         {subs.map((sf) => (
                           <SelectItem key={sf.index} value={String(sf.index)}>
-                            {sf.weight || sf.style_name || 'Regular'}
+                            {[sf.variant, sf.weight || sf.style_name || 'Regular'].filter(Boolean).join(' ')}
                           </SelectItem>
                         ))}
                       </React.Fragment>
