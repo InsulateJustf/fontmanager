@@ -186,20 +186,20 @@ def _strip_once(s: str) -> str:
         return new
     for sfx in _REGION_SUFFIXES:
         if result.endswith(sfx):
-            return result[:-len(sfx)].strip()
+            return result[:-len(sfx)].strip(" -_")
     for w in _WEIGHT_EN:
         if result.lower().endswith(w.lower()):
-            return result[:-len(w)].strip()
+            return result[:-len(w)].strip(" -_")
     for w in _WEIGHT_ZH:
         if result.endswith(w):
-            return result[:-len(w)].strip()
+            return result[:-len(w)].strip(" -_")
     for d in _DESCRIPTORS:
         if _is_cjk(d):
             if result.endswith(d):
-                return result[:-len(d)].strip()
+                return result[:-len(d)].strip(" -_")
         else:
             if result.lower().endswith(d.lower()):
-                return result[:-len(d)].strip()
+                return result[:-len(d)].strip(" -_")
     return result
 
 
