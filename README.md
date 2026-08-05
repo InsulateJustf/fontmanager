@@ -1,98 +1,213 @@
 # FontManager — 企业内部字体管理系统
 
-供设计师团队使用的 Web 字体管理工具，支持拖拽上传、自动去重、自动重命名。
+供设计师团队使用的 Web 字体管理工具。支持拖拽上传、自动解析元数据、去重、重命名并入库，含 CJK 检测、TTC 子字体管理、字体预览、家族分组、打包下载等功能。
 
 ## 功能
 
-- **拖拽上传**：将字体文件拖到网页即可上传
-- **自动识别**：解析 TTF/OTF/TTC 字体的家族名和样式名
-- **自动去重**：按字体名称判断重复，已有字体自动跳过并提示
-- **自动重命名**：文件名统一为 `字体家族名-样式名.扩展名`
-- **字体管理**：查看已入库字体列表，支持删除
+- **拖拽上传** — 将字体文件拖到网页即可批量上传，支持文件夹选择（含嵌套子目录递归读取）
+- **自动识别** — 解析 TTF / OTF / TTC 字体的家族名、样式名、区域、字重
+- **自动去重** — 按 `(family_name, style_name)` 判断重复，优先保留更完整的版本（TTC > OTF > TTF，同格式取大文件）
+- **自动重命名** — 文件名统一为 `字体家族名-样式名.扩展名`
+- **CJK 检测** — 分析字体的中文支持情况（简体 / 繁体 / 日文 / 韩文），显示徽章和警告
+- **TTC 子字体管理** — 查看 TTC 内所有子字体，按区域（SC/TC/HK/JP/KR）分组显示，支持单独预览和下载
+- **字体预览** — 通过 @font-face 实时加载预览，支持自定义文字、字号滑块（12–120px）
+- **家族分组** — 同一家族的多个字重自动归组显示，可展开/收起查看各字重详情
+- **按家族下载** — 一键打包同家族所有字重为 ZIP 下载
+- **Windows 系统字体过滤** — 自动跳过 100+ 个 Windows 内置字体（含"微软雅黑"、"宋体"、"等线"等）
+- **打包下载** — 一键打包所有字体为 ZIP 下载
+- **启动自动扫描** — 服务启动时自动扫描字体存储目录，将未入库的字体自动导入
+- **删除二次确认** — 两次确认后才会执行删除，防止误删
 
-## 部署步骤（Windows Server）
+## 技术栈
 
-### 前置条件
+| 层级 | 技术 |
+|------|------|
+| 后端 | Python 3.9+ / Flask / Waitress / fontTools / SQLite |
+| 前端 | React 19 / Vite / TypeScript / Tailwind CSS 4 / shadcn/ui |
+| 部署 | PyInstaller 单文件 exe / GitHub Actions 自动构建 |
 
-- Windows Server 2016+
-- Python 3.9+（已加入 PATH）
+## 快速开始
 
-### 安装
+### macOS 本地开发
 
-1. 将整个 `fontmanager` 文件夹复制到服务器
-2. 双击 `start.bat`
-3. 首次运行会自动创建虚拟环境并安装依赖
-4. 启动后访问 `http://服务器IP:8080`
+```bash
+# 克隆仓库
+git clone <repo-url> && cd fontmanager
 
-### 手动启动
+# 一键启动（自动创建 venv、安装依赖、构建前端）
+bash start.sh
 
-```cmd
-cd fontmanager
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
+# 自定义存储目录和端口
+bash start.sh -s ~/MyFonts -p 9090
 ```
 
-## 使用方法
+### Windows Server 部署
 
-1. 打开浏览器访问 `http://服务器IP:8080`
-2. 将字体文件（TTF/OTF/TTC）拖拽到页面上方区域
-3. 系统自动解析、去重、入库
-4. 在下方表格中查看和管理已入库字体
+#### 方式一：Python 环境
 
-## 配置
+1. 确保已安装 Python 3.9+（已加入 PATH）
+2. 将整个 `fontmanager` 文件夹复制到服务器
+3. 双击 `start.bat`（首次运行自动创建 venv 并安装依赖）
+4. 访问 `http://服务器IP:8080`
 
-默认字体存储目录：`C:\ProgramData\FontManager\fonts\`
+#### 方式二：单文件 exe（无需 Python 环境）
 
-可通过环境变量 `FONT_STORAGE` 自定义：
+1. 运行 `build.bat` 或通过 GitHub Actions 自动构建
+2. 将 `dist/FontManager.exe` 复制到服务器
+3. 双击运行，访问 `http://服务器IP:8080`
 
-```cmd
-set FONT_STORAGE=D:\MyFonts
-python app.py
-```
-
-## 项目结构
-
-```
-fontmanager/
-├── app.py              # Flask 主应用
-├── font_parser.py      # 字体解析模块
-├── db.py               # SQLite 数据库操作
-├── requirements.txt    # Python 依赖
-├── start.bat           # Windows 一键启动
-├── static/
-│   ├── index.html      # 前端页面
-│   ├── style.css       # 样式
-│   └── app.js          # 前端逻辑
-└── README.md
-```
-
-## 方式二：单文件 exe（无需 Python 环境）
-
-### 构建 exe
-
-1. 在有 Python 环境的机器上运行 `build.bat`
-2. 构建完成后，`dist/FontManager.exe` 即为单文件可执行程序
-
-### 部署
-
-1. 将 `FontManager.exe` 复制到 Windows Server
-2. 双击运行
-3. 访问 `http://服务器IP:8080`
-
-### 自定义存储路径
-
-```cmd
-set FONT_STORAGE=D:\MyFonts
-FontManager.exe
-```
-
-### 作为 Windows 服务运行（可选）
-
-使用 [NSSM](https://nssm.cc/) 将 FontManager 注册为系统服务：
+可选：使用 [NSSM](https://nssm.cc/) 注册为 Windows 服务：
 
 ```cmd
 nssm install FontManager "C:\path\to\FontManager.exe"
 nssm start FontManager
 ```
+
+### GitHub Actions 自动构建
+
+- **main 分支** (`build.yml`): push / PR 到 main 或推送 `v*` tag 时自动触发，产物保留 90 天，tag 推送时自动创建 Release
+- **test 分支** (`build-test.yml`): 仅手动触发（workflow_dispatch），产物保留 30 天
+
+## 前端开发
+
+前端使用 React + Vite 构建，源码位于 `frontend/` 目录。
+
+```bash
+cd frontend
+npm install
+
+# 开发模式（自动 proxy API 到 Flask 8080 端口）
+npm run dev
+
+# 构建生产版本（输出到 static/）
+npm run build
+```
+
+### 布局
+
+```
+┌──────────────┬──────────────────────────────────────────┐
+│   侧边栏     │              主区域                       │
+│  (260px)     │                                          │
+│              │  [搜索框]  [筛选: 格式|语言|字重]          │
+│  📁 上传区    │  ┌──────────────────────────────────────┐│
+│  拖拽/选择    │  │ 字体名称  │ 样式  │ CJK │ 格式 │ 大小│││
+│              │  │───────────│───────│─────│──────│─────│││
+│  🔍 筛选器    │  │ 思源宋体 ▶│ 6个字重│ 简繁 │ TTC  │205M│││
+│  □ 格式筛选   │  │   Regular │       │ 简繁 │ TTC  │ 45M│││
+│  □ 语言筛选   │  │   Bold    │       │ 简繁 │ TTC  │ 46M│││
+│              │  └──────────────────────────────────────┘│
+│  🏷️ 标签     │                                          │
+│  + 品牌字体   │              ← 点击字体行 →               │
+│  + 项目A字体  │                           ┌─ 预览面板 ──┐│
+│              │                           │ 字体预览     ││
+│  📊 统计      │                           │ 字号滑块     ││
+│  共 N 个字体  │                           │ 子字体选择   ││
+│  TTC/OTF/TTF │                           │ CJK 信息     ││
+│              │                           │ [下载] [删除]││
+│  📦 打包下载  │                           └──────────────┘│
+└──────────────┴──────────────────────────────────────────┘
+```
+
+- 多字重家族自动归组，点击展开/收起查看各字重
+- 家族标题行带 📦 按钮，一键下载同家族全部字重 ZIP
+- TTC 子字体选择器按区域分组，标签显示 variant + weight（区分 Mono 等变体）
+
+## 配置
+
+| 环境变量 | 说明 | 默认值 |
+|---------|------|--------|
+| `FONT_STORAGE` | 字体存储目录 | Windows: `C:\ProgramData\FontManager\fonts\`，其他: `./fonts/` |
+| `FONT_PORT` | 服务端口 | `8080` |
+| `FONT_HOST` | 监听地址 | `0.0.0.0` |
+
+也可通过命令行参数指定：
+
+```bash
+python app.py --port 9090 --storage /path/to/fonts
+```
+
+## API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 前端页面 |
+| POST | `/api/upload` | 批量上传字体 |
+| GET | `/api/fonts` | 字体列表 |
+| GET | `/api/fonts/<id>/file` | 预览/下载字体文件（`?download=1` 下载，`?subfont=N` 提取 TTC 子字体） |
+| GET | `/api/fonts/<id>/subfonts` | TTC 子字体列表（带缓存） |
+| GET | `/api/fonts/<id>/cjk` | CJK 支持信息（带缓存，`?subfont=N` 检测特定子字体） |
+| DELETE | `/api/fonts/<id>` | 删除字体（文件 + 记录，需二次确认） |
+| GET | `/api/fonts/download-all` | 打包下载全部字体（ZIP） |
+| GET | `/api/fonts/download-family` | 按家族下载 ZIP（`?name=<family_name>`） |
+
+## 项目结构
+
+```
+fontmanager/
+├── app.py                  # Flask 路由 + Waitress 服务 + 启动扫描
+├── font_parser.py          # fontTools 解析、CJK 检测、名称清洗、Windows 字体过滤
+├── db.py                   # SQLite CRUD + 自动迁移
+├── requirements.txt        # flask, fonttools, waitress
+├── start.sh                # macOS 开发启动脚本（支持 -s/-p 参数，自动构建前端）
+├── start.bat               # Windows 一键启动
+├── build.bat               # Windows PyInstaller 打包
+├── fontmanager.spec        # PyInstaller 配置
+├── .github/workflows/
+│   ├── build.yml           # GitHub Actions main 分支自动编译 exe
+│   └── build-test.yml      # GitHub Actions test 分支手动编译 exe
+├── frontend/               # React 前端源码
+│   ├── src/
+│   │   ├── components/     # UI 组件（Sidebar, FontTable, FontPreview, UploadResults...）
+│   │   │   └── ui/         # shadcn/ui 组件库
+│   │   ├── lib/            # api.ts（API 封装）、utils.ts
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── package.json
+│   └── vite.config.ts
+├── static/                 # Vite 构建输出（Flask 直接服务）
+└── fonts/                  # 默认字体存储目录（.gitignore）
+```
+
+## 上传流程
+
+```
+接收文件 → 逐个处理:
+  1. 检查扩展名（.ttf/.otf/.ttc）
+  2. 解析字体元数据（family_name, style_name）
+  3. 过滤 Windows 系统内置字体
+  4. 查重：已存在且旧的更完整 → 跳过；新的更完整 → 替换
+  5. 生成规范文件名，处理冲突（_1/_2 后缀）
+  6. 移动到存储目录，计算 SHA256
+  7. CJK 检测 + TTC 子字体解析
+  8. 写入数据库
+```
+
+## 数据库
+
+SQLite 表 `fonts`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 ID |
+| family_name | TEXT | 字体家族名 |
+| style_name | TEXT | 样式名 |
+| format | TEXT | ttf / otf / ttc |
+| file_size | INTEGER | 文件大小（bytes） |
+| file_hash | TEXT | SHA256 |
+| stored_filename | TEXT | 服务器存储文件名 |
+| original_filename | TEXT | 上传时原始文件名 |
+| cjk_info | TEXT (JSON) | CJK 支持信息缓存 |
+| subfonts_info | TEXT (JSON) | TTC 子字体列表缓存 |
+| created_at | TIMESTAMP | 入库时间 |
+
+唯一约束：`(family_name, style_name)`
+
+## 开发约定
+
+- **Python 3.9+** — 使用 `typing.Optional`、`typing.List` 等旧式类型注解
+- **前端技术** — React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui
+- **分支策略** — `main` 为稳定分支，`test` 为开发分支
+- **提交风格** — 简短中文 commit message
+- **提交/推送** — 任何 git commit 和 push 操作必须由用户明确批准
+- **测试流程** — 新功能或 Bug 修复后向用户报告改动，等待用户手动测试确认
