@@ -1,6 +1,7 @@
 """FontManager — Flask web application for font management."""
 
 import io
+import re
 import json
 import os
 import shutil
@@ -316,6 +317,82 @@ def download_all_fonts():
     )
 
 
+@app.route("/api/fonts/download-family", methods=["GET"])
+def download_family_fonts():
+    """Download all fonts of a specific family as a zip file."""
+    family_name = request.args.get("name", "").strip()
+    if not family_name:
+        return jsonify({"status": "error", "message": "缺少 name 参数"}), 400
+
+    fonts = db.get_fonts_by_family(family_name)
+    if not fonts:
+        return jsonify({"status": "error", "message": "未找到字体: {}".format(family_name)}), 404
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for font in fonts:
+            file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+            if os.path.exists(file_path):
+                zf.write(file_path, font["stored_filename"])
+    zip_buffer.seek(0)
+
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", family_name).strip()
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="{}-全部字重.zip".format(safe_name)
+    )
+
+
+@app.route("/api/tags", methods=["GET"])
+def list_tags():
+    tags = db.get_all_tags()
+    return jsonify({"status": "ok", "tags": tags})
+
+
+@app.route("/api/tags", methods=["POST"])
+def create_tag():
+    data = request.get_json()
+    name = data.get("name", "").strip()
+    color = data.get("color", "#6b7280")
+    if not name:
+        return jsonify({"status": "error", "message": "Tag name required"}), 400
+    try:
+        tag_id = db.create_tag(name, color)
+        return jsonify({"status": "ok", "tag": {"id": tag_id, "name": name, "color": color, "count": 0}})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route("/api/tags/<int:tag_id>", methods=["DELETE"])
+def delete_tag(tag_id):
+    db.delete_tag(tag_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/fonts/<int:font_id>/tags", methods=["GET"])
+def get_font_tags(font_id):
+    tags = db.get_font_tags(font_id)
+    return jsonify({"status": "ok", "tags": tags})
+
+
+@app.route("/api/fonts/<int:font_id>/tags", methods=["POST"])
+def add_tag_to_font(font_id):
+    data = request.get_json()
+    tag_id = data.get("tag_id")
+    if not tag_id:
+        return jsonify({"status": "error", "message": "tag_id required"}), 400
+    db.add_font_tag(font_id, tag_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/fonts/<int:font_id>/tags/<int:tag_id>", methods=["DELETE"])
+def remove_tag_from_font(font_id, tag_id):
+    db.remove_font_tag(font_id, tag_id)
+    return jsonify({"status": "ok"})
+
+
 def scan_fonts_directory():
     """Scan FONT_STORAGE on startup: auto-import and rename orphan font files."""
     if not os.path.isdir(FONT_STORAGE):
@@ -430,6 +507,7 @@ if __name__ == "__main__":
     FONT_STORAGE = os.path.abspath(args.storage)
     ensure_storage()
     db.init_db()
+    db.init_tags_db()
     print("扫描字体目录: {}".format(FONT_STORAGE))
     scan_fonts_directory()
     print("FontManager starting on http://{}:{}".format(args.host, args.port))

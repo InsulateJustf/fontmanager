@@ -137,6 +137,15 @@ def get_all_fonts() -> list:
     return [dict(row) for row in rows]
 
 
+def get_fonts_by_family(family_name: str) -> list:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM fonts WHERE family_name=? ORDER BY style_name", (family_name,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_font_by_id(font_id: int) -> Optional[dict]:
     conn = get_connection()
     cursor = conn.cursor()
@@ -155,3 +164,93 @@ def delete_font(font_id: int) -> Optional[dict]:
         conn.commit()
         conn.close()
     return font
+
+
+# ─── Tags ─────────────────────────────────────────────────────────────────────
+
+def init_tags_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            color TEXT DEFAULT '#6b7280',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS font_tags (
+            font_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY (font_id, tag_id),
+            FOREIGN KEY (font_id) REFERENCES fonts(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_all_tags():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.id, t.name, t.color, COUNT(ft.font_id) as count
+        FROM tags t
+        LEFT JOIN font_tags ft ON t.id = ft.tag_id
+        GROUP BY t.id
+        ORDER BY t.name
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def create_tag(name, color='#6b7280'):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO tags (name, color) VALUES (?, ?)", (name, color))
+    tag_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return tag_id
+
+
+def delete_tag(tag_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM font_tags WHERE tag_id=?", (tag_id,))
+    cursor.execute("DELETE FROM tags WHERE id=?", (tag_id,))
+    conn.commit()
+    conn.close()
+
+
+def add_font_tag(font_id, tag_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO font_tags (font_id, tag_id) VALUES (?, ?)", (font_id, tag_id))
+    conn.commit()
+    conn.close()
+
+
+def remove_font_tag(font_id, tag_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM font_tags WHERE font_id=? AND tag_id=?", (font_id, tag_id))
+    conn.commit()
+    conn.close()
+
+
+def get_font_tags(font_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.id, t.name, t.color
+        FROM tags t
+        JOIN font_tags ft ON t.id = ft.tag_id
+        WHERE ft.font_id = ?
+    """, (font_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
