@@ -137,6 +137,15 @@ def get_all_fonts() -> list:
     return [dict(row) for row in rows]
 
 
+def get_fonts_by_family(family_name: str) -> list:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM fonts WHERE family_name=? ORDER BY style_name", (family_name,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_font_by_id(font_id: int) -> Optional[dict]:
     conn = get_connection()
     cursor = conn.cursor()

@@ -150,6 +150,10 @@ export async function downloadAllFonts(): Promise<void> {
   window.open(`${API_BASE}/fonts/download-all`, '_blank')
 }
 
+export function downloadFamilyFonts(familyName: string): void {
+  window.open(`${API_BASE}/fonts/download-family?name=${encodeURIComponent(familyName)}`, '_blank')
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'

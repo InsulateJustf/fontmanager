@@ -1,6 +1,7 @@
 """FontManager — Flask web application for font management."""
 
 import io
+import re
 import json
 import os
 import shutil
@@ -313,6 +314,34 @@ def download_all_fonts():
         mimetype="application/zip",
         as_attachment=True,
         download_name="FontManager-字体库.zip"
+    )
+
+
+@app.route("/api/fonts/download-family", methods=["GET"])
+def download_family_fonts():
+    """Download all fonts of a specific family as a zip file."""
+    family_name = request.args.get("name", "").strip()
+    if not family_name:
+        return jsonify({"status": "error", "message": "缺少 name 参数"}), 400
+
+    fonts = db.get_fonts_by_family(family_name)
+    if not fonts:
+        return jsonify({"status": "error", "message": "未找到字体: {}".format(family_name)}), 404
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for font in fonts:
+            file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+            if os.path.exists(file_path):
+                zf.write(file_path, font["stored_filename"])
+    zip_buffer.seek(0)
+
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", family_name).strip()
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="{}-全部字重.zip".format(safe_name)
     )
 
 

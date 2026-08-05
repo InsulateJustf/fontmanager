@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   Table,
   TableBody,
@@ -25,9 +25,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
-import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X } from 'lucide-react'
+import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import type { Font, CJKInfo, Tag as TagType } from '@/lib/api'
-import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont } from '@/lib/api'
+import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts } from '@/lib/api'
 
 interface FontTableProps {
   fonts: Font[]
@@ -60,6 +60,7 @@ export function FontTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [tagFontId, setTagFontId] = useState<number | null>(null)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const pageSize = 50
 
   // Filter
@@ -108,9 +109,22 @@ export function FontTable({
     return sortDirection === 'asc' ? cmp : -cmp
   })
 
-  // Paginate
-  const totalPages = Math.ceil(sorted.length / pageSize)
-  const paginated = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  // Group sorted fonts by family_name for display
+  const familyGroups: { family: string; fonts: Font[]; hasMultiple: boolean }[] = []
+  const familyMap = new Map<string, Font[]>()
+  for (const font of sorted) {
+    const key = font.family_name
+    if (!familyMap.has(key)) familyMap.set(key, [])
+    familyMap.get(key)!.push(font)
+  }
+  for (const [family, groupFonts] of familyMap) {
+    familyGroups.push({ family, fonts: groupFonts, hasMultiple: groupFonts.length > 1 })
+  }
+
+  // Paginate at family group level
+  const totalGroups = familyGroups.length
+  const totalPages = Math.ceil(totalGroups / pageSize)
+  const paginatedGroups = familyGroups.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -119,6 +133,15 @@ export function FontTable({
       setSortField(field)
       setSortDirection('asc')
     }
+  }
+
+  const toggleFamily = (family: string) => {
+    setExpandedFamilies((prev) => {
+      const next = new Set(prev)
+      if (next.has(family)) next.delete(family)
+      else next.add(family)
+      return next
+    })
   }
 
   const handleDelete = async (font: Font) => {
@@ -310,65 +333,118 @@ export function FontTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginated.length === 0 ? (
+            {paginatedGroups.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
                   暂无字体
                 </TableCell>
               </TableRow>
             ) : (
-              paginated.map((font) => (
-                <TableRow
-                  key={font.id}
-                  className="cursor-pointer"
-                  onClick={() => onFontSelect(font)}
-                >
-                  <TableCell className="font-medium text-center">{font.family_name}</TableCell>
-                  <TableCell className="text-center">
-                    {font.format === 'ttc' ? (
-                      <Badge variant="secondary">多样式</Badge>
-                    ) : (
-                      font.style_name
+              paginatedGroups.map((group) => {
+                const isExpanded = expandedFamilies.has(group.family)
+                const showHeader = group.hasMultiple
+                const fontsToShow = showHeader && !isExpanded ? [] : group.fonts
+                const totalSize = group.fonts.reduce((sum, f) => sum + f.file_size, 0)
+
+                return (
+                  <React.Fragment key={group.family}>
+                    {showHeader && (
+                      <TableRow className="bg-muted/30 hover:bg-muted/50">
+                        <TableCell className="font-medium text-center">
+                          <button
+                            className="inline-flex items-center gap-1 hover:underline"
+                            onClick={(e) => { e.stopPropagation(); toggleFamily(group.family) }}
+                          >
+                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {group.family}
+                            <Badge variant="secondary" className="ml-1 text-xs">{group.fonts.length}</Badge>
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">{group.fonts.length} 个字重</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{renderTags(group.fonts[0])}</TableCell>
+                        <TableCell className="text-center">{renderCJKBadges(group.fonts[0])}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex gap-1 justify-center">
+                            {[...new Set(group.fonts.map(f => f.format))].map(f => (
+                              <Badge key={f} variant="outline">{f.toUpperCase()}</Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{formatFileSize(totalSize)}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="下载全部字重"
+                              onClick={() => downloadFamilyFonts(group.family)}
+                            >
+                              <Package className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableCell>
-                  <TableCell className="text-center">{renderTags(font)}</TableCell>
-                  <TableCell className="text-center">{renderCJKBadges(font)}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="outline">{font.format.toUpperCase()}</Badge>
-                  </TableCell>
-                  <TableCell className="text-center">{formatFileSize(font.file_size)}</TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
+                    {fontsToShow.map((font) => (
+                      <TableRow
+                        key={font.id}
+                        className={`cursor-pointer ${showHeader ? 'bg-background' : ''}`}
                         onClick={() => onFontSelect(font)}
                       >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        asChild
-                      >
-                        <a href={getFontFileUrl(font.id, { download: true })}>
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(font)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                        <TableCell className={`font-medium text-center ${showHeader ? 'pl-8' : ''}`}>
+                          {!showHeader && font.family_name}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {font.format === 'ttc' ? (
+                            <Badge variant="secondary">多样式</Badge>
+                          ) : (
+                            font.style_name
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">{renderTags(font)}</TableCell>
+                        <TableCell className="text-center">{renderCJKBadges(font)}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">{font.format.toUpperCase()}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{formatFileSize(font.file_size)}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => onFontSelect(font)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              asChild
+                            >
+                              <a href={getFontFileUrl(font.id, { download: true })}>
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(font)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -378,7 +454,7 @@ export function FontTable({
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            共 {sorted.length} 个字体，第 {currentPage}/{totalPages} 页
+            共 {sorted.length} 个字体（{familyGroups.length} 个家族），第 {currentPage}/{totalPages} 页
           </p>
           <Pagination>
             <PaginationContent>
