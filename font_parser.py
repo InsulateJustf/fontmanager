@@ -53,6 +53,10 @@ WINDOWS_BUILTIN_FONTS = {
     "Ming(for ISO10646)", "PMingLiU-ExtB",
     "MS Mincho", "MS PMincho", "Meiryo", "Meiryo UI",
     "Yu Mincho",
+    # Windows 10+ bundled CJK fonts
+    "DengXian", "等线",
+    "DengXian Light", "等线 Light",
+    "DengXian Bold", "等线 Bold",
 }
 
 _WINDOWS_BUILTIN_LOWER = {n.lower() for n in WINDOWS_BUILTIN_FONTS}
@@ -78,12 +82,12 @@ _WEIGHT_EN = sorted([
 ], key=len, reverse=True)
 
 _WEIGHT_ZH = sorted([
-    "极细", "超细", "細", "细", "纤细",
-    "轻", "輕", "轻体", "輕體",
+    "极细", "超细", "纤细",
+    "轻体", "輕體",
     "常规", "常規", "标准", "標準",
-    "中", "中粗", "半粗",
-    "粗", "粗体", "粗體",
-    "特粗", "超粗", "黑", "重",
+    "中粗", "半粗",
+    "粗体", "粗體",
+    "特粗", "超粗",
 ], key=len, reverse=True)
 
 _DESCRIPTORS = sorted([
