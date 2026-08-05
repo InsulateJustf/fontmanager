@@ -13,7 +13,10 @@ from waitress import serve
 
 import db
 from font_parser import (parse_font, generate_filename, detect_format,
-                         get_ttc_subfonts, get_cjk_support, is_windows_builtin)
+                         get_ttc_subfonts, get_cjk_support, is_windows_builtin,
+                         compute_cmap_fingerprint, is_non_standard_naming,
+                         extract_weight_from_name, detect_common_base_name,
+                         rewrite_font_names, get_raw_family_name)
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -85,6 +88,48 @@ def _process_single_file(file_storage):
         style_name = meta["style_name"]
         fmt = meta["format"]
 
+        # ── Cmap fingerprint & naming correction (TTF/OTF only) ──
+        cmap_fp = None
+        if fmt in ("ttf", "otf"):
+            cmap_fp = compute_cmap_fingerprint(tmp_path)
+            if cmap_fp:
+                raw_name = get_raw_family_name(tmp_path)
+                if raw_name and is_non_standard_naming(raw_name, style_name):
+                    # Always correct from raw name — no need to wait for related fonts
+                    base, weight = extract_weight_from_name(raw_name)
+                    if base and weight:
+                        # Refine base name with related fonts if available
+                        related = db.get_fonts_by_fingerprint(cmap_fp["hash"])
+                        related = [r for r in related
+                                   if r.get("cmap_fingerprint")
+                                   and json.loads(r["cmap_fingerprint"]).get("glyph_count") == cmap_fp["glyph_count"]
+                                   and json.loads(r["cmap_fingerprint"]).get("version") == cmap_fp["version"]]
+                        if related:
+                            all_names = [r["family_name"] for r in related] + [raw_name]
+                            refined = detect_common_base_name(all_names)
+                            if refined:
+                                base = refined
+                        if rewrite_font_names(tmp_path, base, weight):
+                            family_name = base
+                            style_name = weight
+                            meta = parse_font(tmp_path)
+                        # Update existing related fonts
+                        for r in related:
+                            r_fpath = os.path.join(FONT_STORAGE, r["stored_filename"])
+                            r_raw = get_raw_family_name(r_fpath) if os.path.exists(r_fpath) else None
+                            if r_raw:
+                                _, r_weight = extract_weight_from_name(r_raw)
+                            else:
+                                _, r_weight = "", ""
+                            if r_weight:
+                                db.replace_font(
+                                    r["id"], base, r_weight,
+                                    r["format"], r["file_size"], r["file_hash"],
+                                    r["stored_filename"], r["original_filename"],
+                                    json.loads(r["cjk_info"]) if r.get("cjk_info") else None,
+                                    json.loads(r["subfonts_info"]) if r.get("subfonts_info") else None,
+                                )
+
         # Skip Windows built-in fonts
         if is_windows_builtin(family_name):
             if tmp_path and os.path.exists(tmp_path):
@@ -141,6 +186,7 @@ def _process_single_file(file_storage):
             file_size=file_size, file_hash=file_hash,
             stored_filename=new_filename, original_filename=original_name,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
+            cmap_fingerprint=cmap_fp,
         )
 
         msg = "Added: {} - {}".format(family_name, style_name)
@@ -434,6 +480,46 @@ def scan_fonts_directory():
         style_name = meta["style_name"]
         fmt = meta["format"]
 
+        # ── Cmap fingerprint & naming correction (TTF/OTF only) ──
+        cmap_fp = None
+        if fmt in ("ttf", "otf"):
+            cmap_fp = compute_cmap_fingerprint(fpath)
+            if cmap_fp:
+                raw_name = get_raw_family_name(fpath)
+                if raw_name and is_non_standard_naming(raw_name, style_name):
+                    base, weight = extract_weight_from_name(raw_name)
+                    if base and weight:
+                        related = db.get_fonts_by_fingerprint(cmap_fp["hash"])
+                        related = [r for r in related
+                                   if r.get("cmap_fingerprint")
+                                   and json.loads(r["cmap_fingerprint"]).get("glyph_count") == cmap_fp["glyph_count"]
+                                   and json.loads(r["cmap_fingerprint"]).get("version") == cmap_fp["version"]]
+                        if related:
+                            all_names = [r["family_name"] for r in related] + [raw_name]
+                            refined = detect_common_base_name(all_names)
+                            if refined:
+                                base = refined
+                        if rewrite_font_names(fpath, base, weight):
+                            family_name = base
+                            style_name = weight
+                            meta = parse_font(fpath)
+                            print("  🔧 修正命名: {} -> {} - {}".format(fname, family_name, style_name))
+                        for r in related:
+                            r_fpath = os.path.join(FONT_STORAGE, r["stored_filename"])
+                            r_raw = get_raw_family_name(r_fpath) if os.path.exists(r_fpath) else None
+                            if r_raw:
+                                _, r_weight = extract_weight_from_name(r_raw)
+                            else:
+                                _, r_weight = "", ""
+                            if r_weight:
+                                db.replace_font(
+                                    r["id"], base, r_weight,
+                                    r["format"], r["file_size"], r["file_hash"],
+                                    r["stored_filename"], r["original_filename"],
+                                    json.loads(r["cjk_info"]) if r.get("cjk_info") else None,
+                                    json.loads(r["subfonts_info"]) if r.get("subfonts_info") else None,
+                                )
+
         # Skip Windows built-in fonts
         if is_windows_builtin(family_name):
             print("  ⚠️  跳过 Windows 系统字体: {} ({})".format(family_name, fname))
@@ -491,6 +577,7 @@ def scan_fonts_directory():
             file_size=file_size, file_hash=file_hash,
             stored_filename=new_filename, original_filename=fname,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
+            cmap_fingerprint=cmap_fp,
         )
         db_families.add((family_name, style_name))
         imported += 1

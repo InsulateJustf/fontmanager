@@ -74,6 +74,7 @@ _COLLECT_LANGS = _ZH_LANGS | _EN_LANGS
 _WEIGHT_EN = sorted([
     "Thin", "Hairline",
     "Extra Light", "ExtraLight", "Ultra Light", "UltraLight",
+    "Semi Light", "SemiLight",
     "Demi Light", "DemiLight",
     "Light", "Regular", "Normal", "Medium",
     "Semi Bold", "SemiBold", "Demi Bold", "DemiBold",
@@ -521,3 +522,177 @@ def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
         else:
             font.close()
 
+
+
+# ─── Cmap fingerprint & naming correction ────────────────────────────────────
+
+import hashlib
+
+
+def compute_cmap_fingerprint(filepath: str) -> Optional[dict]:
+    """Compute a lightweight cmap fingerprint for single TTF/OTF (not TTC).
+
+    Returns {"hash": str, "glyph_count": int, "version": str} or None on error.
+    """
+    fmt = detect_format(filepath)
+    if fmt != "ttf" and fmt != "otf":
+        return None
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return None
+    try:
+        cmap = font.getBestCmap()
+        if not cmap:
+            return None
+        # Hash first 200 sorted codepoints for a lightweight fingerprint
+        sample = sorted(cmap.keys())[:200]
+        h = hashlib.md5(str(sample).encode()).hexdigest()
+        glyph_count = len(cmap)
+
+        version = ""
+        name_table = font.get("name")
+        if name_table:
+            for r in name_table.names:
+                if r.nameID == 5 and r.platformID == 3 and r.langID == 1033:
+                    try:
+                        version = r.toUnicode().strip()
+                        break
+                    except Exception:
+                        pass
+
+        return {"hash": h, "glyph_count": glyph_count, "version": version}
+    finally:
+        font.close()
+
+
+def extract_weight_from_name(family_name: str) -> Tuple[str, str]:
+    """Extract weight word from family name if present.
+
+    Returns (base_name, weight). If no weight found, returns (family_name, "").
+    Example: "05HomuraM-SemiBold" -> ("HomuraM", "SemiBold")
+    """
+    # Try English weights (longest first)
+    for w in _WEIGHT_EN:
+        lower = family_name.lower()
+        if lower.endswith(w.lower()):
+            base = family_name[:len(family_name) - len(w)].strip(" -_")
+            # Strip leading digits (e.g., "05HomuraM" -> "HomuraM")
+            base = re.sub(r'^\d+', '', base).strip(" -_")
+            if base:
+                return base, w
+    # Try Chinese multi-char weights
+    for w in _WEIGHT_ZH:
+        if family_name.endswith(w):
+            base = family_name[:len(family_name) - len(w)].strip(" -_")
+            base = re.sub(r'^\d+', '', base).strip(" -_")
+            if base:
+                return base, w
+    return family_name, ""
+
+
+def detect_common_base_name(family_names: list) -> str:
+    """Detect the common base name from a list of family names that contain weights.
+
+    Example: ["01HomuraM-ExtraLight", "02HomuraM-Light", ...] -> "HomuraM"
+    """
+    bases = []
+    for name in family_names:
+        base, weight = extract_weight_from_name(name)
+        if weight:
+            bases.append(base)
+    if not bases:
+        return ""
+    # Return the shortest base (most likely the true name)
+    # All bases should be the same after extraction
+    return min(bases, key=len)
+
+
+def is_non_standard_naming(family_name: str, style_name: str) -> bool:
+    """Check if a font has non-standard naming (weight in family, style=Regular)."""
+    if style_name.lower() != "regular":
+        return False
+    _, weight = extract_weight_from_name(family_name)
+    return bool(weight)
+
+
+def rewrite_font_names(filepath: str, new_family: str, new_style: str) -> bool:
+    """Rewrite a font file's name table with corrected family/style names.
+
+    Modifies nameID 1, 2, 4, 16, 17. Keeps nameID 6 (PostScript) unchanged.
+    Returns True on success.
+    """
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return False
+
+    try:
+        name_table = font.get("name")
+        if name_table is None:
+            return False
+
+        new_full = "{} {}".format(new_family, new_style) if new_style != "Regular" else new_family
+
+        # Platforms to update: (platformID, encodingID, languageID)
+        targets = [
+            (1, 0, 0),       # Mac English
+            (3, 1, 1033),    # Windows English
+        ]
+        # Also add Chinese if present
+        zh_targets = [
+            (3, 1, 2052),    # Windows Chinese Simplified
+            (3, 1, 1028),    # Windows Chinese Traditional
+            (1, 1, 33),      # Mac Chinese
+        ]
+
+        for record in list(name_table.names):
+            pid, eid, lid = record.platformID, record.platEncID, record.langID
+
+            # Check if this is a target we should update
+            is_target = (pid, eid, lid) in targets
+            is_zh_target = (pid, eid, lid) in zh_targets
+
+            if not is_target and not is_zh_target:
+                continue
+
+            if record.nameID == 1:  # family name
+                record.string = new_family
+            elif record.nameID == 2:  # style name
+                record.string = new_style
+            elif record.nameID == 4:  # full name
+                record.string = new_full
+            elif record.nameID == 16:  # typographic family
+                record.string = new_family
+            elif record.nameID == 17:  # typographic style
+                record.string = new_style
+
+        font.save(filepath)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            font.close()
+        except Exception:
+            pass
+
+
+def get_raw_family_name(filepath: str) -> Optional[str]:
+    """Get the raw family name (nameID=1 or 16) without cleaning."""
+    fmt = detect_format(filepath)
+    if fmt is None:
+        return None
+    if fmt == "ttc":
+        return None  # Skip TTC
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return None
+    try:
+        name_table = font.get("name")
+        if name_table is None:
+            return None
+        return _get_name(name_table, 1, prefer_chinese=True) or _get_name(name_table, 16, prefer_chinese=True)
+    finally:
+        font.close()
