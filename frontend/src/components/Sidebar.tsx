@@ -43,22 +43,68 @@ export function Sidebar({
     setIsDragOver(false)
   }
 
+  // Recursively read all files from a directory entry
+  const readDirectoryEntries = async (dirEntry: FileSystemDirectoryEntry): Promise<File[]> => {
+    const reader = dirEntry.createReader()
+    const allFiles: File[] = []
+    // readEntries() may return partial results; loop until empty
+    const readBatch = (): Promise<FileSystemEntry[]> =>
+      new Promise((resolve, reject) => reader.readEntries(resolve, reject))
+    let entries = await readBatch()
+    while (entries.length > 0) {
+      for (const entry of entries) {
+        if (entry.isFile) {
+          const file = await new Promise<File>((resolve, reject) =>
+            (entry as FileSystemFileEntry).file(resolve, reject)
+          )
+          allFiles.push(file)
+        } else if (entry.isDirectory) {
+          const subFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+          allFiles.push(...subFiles)
+        }
+      }
+      entries = await readBatch()
+    }
+    return allFiles
+  }
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    if (e.dataTransfer.files.length > 0) {
-      await handleUpload(e.dataTransfer.files)
+    const items = e.dataTransfer.items
+    if (!items || items.length === 0) return
+
+    const allFiles: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry?.()
+      if (!entry) continue
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject)
+        )
+        allFiles.push(file)
+      } else if (entry.isDirectory) {
+        const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+        allFiles.push(...files)
+      }
+    }
+
+    if (allFiles.length > 0) {
+      const dt = new DataTransfer()
+      allFiles.forEach(f => dt.items.add(f))
+      await handleUpload(dt.files)
     }
   }
 
-  const handleUpload = async (files: FileList) => {
+  const handleUpload = async (files: FileList | File[]) => {
     setIsUploading(true)
     try {
       // Filter font files (including from nested folders)
       const fontExts = ['.ttf', '.otf', '.ttc']
       const fontFiles: File[] = []
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
+      const fileArray = Array.from(files)
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i]
         const name = file.name.toLowerCase()
         if (fontExts.some(ext => name.endsWith(ext))) {
           fontFiles.push(file)
