@@ -44,6 +44,18 @@ source venv/bin/activate
 echo "📦 Checking dependencies..."
 pip install -r requirements.txt -q
 
+# ─── 前端构建 ────────────────────────────────────────────────────────────────
+
+if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    echo "📦 Building frontend..."
+    cd frontend
+    if [ ! -d "node_modules" ]; then
+        npm install
+    fi
+    npm run build
+    cd ..
+fi
+
 # ─── 启动服务 ────────────────────────────────────────────────────────────────
 
 echo ""
