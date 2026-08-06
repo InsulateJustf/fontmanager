@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   Table,
   TableBody,
@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/pagination'
 import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package, Check } from 'lucide-react'
 import type { Font, CJKInfo, Tag as TagType } from '@/lib/api'
-import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts, downloadSelectedFonts } from '@/lib/api'
+import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts, downloadSelectedFonts, batchAddTagToFonts, batchRemoveTagFromFonts } from '@/lib/api'
 
 interface FontTableProps {
   fonts: Font[]
@@ -63,6 +63,12 @@ export function FontTable({
   const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const pageSize = 50
+  const [showBatchTagSelect, setShowBatchTagSelect] = useState(false)
+  const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove'>('add')
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
+  const batchTagRef = useRef<HTMLDivElement>(null)
+
+
 
   // Filter
   const filtered = fonts.filter((font) => {
@@ -186,6 +192,62 @@ export function FontTable({
       console.error('Download failed:', err)
     }
   }
+
+  const handleBatchAddTag = async () => {
+    if (selectedIds.size === 0 || selectedTagIds.size === 0) return
+    try {
+      for (const tagId of selectedTagIds) {
+        await batchAddTagToFonts(Array.from(selectedIds), tagId)
+      }
+      setShowBatchTagSelect(false)
+      setSelectedTagIds(new Set())
+      onTagsChange()
+    } catch (err) {
+      console.error('Batch add tag failed:', err)
+    }
+  }
+
+  const handleBatchRemoveTag = async () => {
+    if (selectedIds.size === 0 || selectedTagIds.size === 0) return
+    try {
+      for (const tagId of selectedTagIds) {
+        await batchRemoveTagFromFonts(Array.from(selectedIds), tagId)
+      }
+      setShowBatchTagSelect(false)
+      setSelectedTagIds(new Set())
+      onTagsChange()
+    } catch (err) {
+      console.error('Batch remove tag failed:', err)
+    }
+  }
+
+  const toggleBatchTagSelect = (tagId: number) => {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev)
+      if (next.has(tagId)) next.delete(tagId)
+      else next.add(tagId)
+      return next
+    })
+  }
+
+  // Close batch tag dropdown when clicking outside
+  useEffect(() => {
+    if (!showBatchTagSelect) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (batchTagRef.current && !batchTagRef.current.contains(e.target as Node)) {
+        setShowBatchTagSelect(false)
+        setSelectedTagIds(new Set())
+      }
+    }
+    // Use setTimeout to avoid the opening click from triggering this handler
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showBatchTagSelect])
 
   const handleDelete = async (font: Font) => {
     if (!confirm(`确定要删除 "${font.family_name} - ${font.style_name}"？`)) return
@@ -533,7 +595,7 @@ export function FontTable({
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
             已选择 {selectedCount} 个字体
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center" ref={batchTagRef}>
             <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
               取消选择
             </Button>
@@ -541,6 +603,119 @@ export function FontTable({
               <Download className="h-4 w-4 mr-1" />
               下载选中
             </Button>
+            <div className="relative">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (showBatchTagSelect && batchTagMode === 'add') {
+                    setShowBatchTagSelect(false)
+                    setSelectedTagIds(new Set())
+                  } else {
+                    setBatchTagMode('add')
+                    setSelectedTagIds(new Set())
+                    setShowBatchTagSelect(true)
+                  }
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                添加标签
+              </Button>
+              {showBatchTagSelect && batchTagMode === 'add' && (
+                <div className="absolute bottom-full left-0 mb-1 bg-white border rounded-md shadow-lg z-50 min-w-[180px]" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-2">
+                    <p className="text-xs font-medium mb-2">选择标签（可多选）:</p>
+                    {tags.map(tag => (
+                      <label
+                        key={tag.id}
+                        className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTagIds.has(tag.id)}
+                          onChange={() => toggleBatchTagSelect(tag.id)}
+                          className="rounded"
+                        />
+                        {tag.name}
+                      </label>
+                    ))}
+                    {tags.length === 0 && (
+                      <p className="text-xs text-gray-500">暂无标签</p>
+                    )}
+                    {selectedTagIds.size > 0 && (
+                      <Button 
+                        size="sm" 
+                        className="w-full mt-2"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleBatchAddTag()
+                        }}
+                      >
+                        确认添加 ({selectedTagIds.size}个标签)
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (showBatchTagSelect && batchTagMode === 'remove') {
+                    setShowBatchTagSelect(false)
+                    setSelectedTagIds(new Set())
+                  } else {
+                    setBatchTagMode('remove')
+                    setSelectedTagIds(new Set())
+                    setShowBatchTagSelect(true)
+                  }
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                删除标签
+              </Button>
+              {showBatchTagSelect && batchTagMode === 'remove' && (
+                <div className="absolute bottom-full left-0 mb-1 bg-white border rounded-md shadow-lg z-50 min-w-[180px]" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-2">
+                    <p className="text-xs font-medium mb-2">选择标签（可多选）:</p>
+                    {tags.map(tag => (
+                      <label
+                        key={tag.id}
+                        className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTagIds.has(tag.id)}
+                          onChange={() => toggleBatchTagSelect(tag.id)}
+                          className="rounded"
+                        />
+                        {tag.name}
+                      </label>
+                    ))}
+                    {tags.length === 0 && (
+                      <p className="text-xs text-gray-500">暂无标签</p>
+                    )}
+                    {selectedTagIds.size > 0 && (
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        className="w-full mt-2"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleBatchRemoveTag()
+                        }}
+                      >
+                        确认删除 ({selectedTagIds.size}个标签)
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

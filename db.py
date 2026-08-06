@@ -7,11 +7,24 @@ import hashlib
 from typing import Optional
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fontmanager.db")
+_DB_PATH = None
+
+def set_db_path(path):
+    """Set the database file path."""
+    global _DB_PATH
+    _DB_PATH = path
+
+def get_db_path():
+    """Get the current database file path."""
+    if _DB_PATH is not None:
+        return _DB_PATH
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "fontmanager.db")
+
+DB_PATH = get_db_path()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -277,3 +290,23 @@ def get_font_tags(font_id):
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def add_font_tag_batch(font_ids, tag_id):
+    """批量为多个字体添加标签"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    for font_id in font_ids:
+        cursor.execute("INSERT OR IGNORE INTO font_tags (font_id, tag_id) VALUES (?, ?)", (font_id, tag_id))
+    conn.commit()
+    conn.close()
+
+
+def remove_font_tag_batch(font_ids, tag_id):
+    """批量从多个字体删除标签"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    for font_id in font_ids:
+        cursor.execute("DELETE FROM font_tags WHERE font_id=? AND tag_id=?", (font_id, tag_id))
+    conn.commit()
+    conn.close()

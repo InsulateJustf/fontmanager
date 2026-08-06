@@ -1,5 +1,8 @@
 # FontManager — 企业内部字体管理系统
 
+[![纯 AI 零人工](https://img.shields.io/badge/🤖_纯_AI_零人工-100%25-blueviolet?style=flat-square)](https://github.com/InsulateJustf/fontmanager)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/InsulateJustf/fontmanager/build.yml?branch=main&style=flat-square&label=main%20build)](https://github.com/InsulateJustf/fontmanager/actions/workflows/build.yml)
+
 供设计师团队使用的 Web 字体管理工具。支持拖拽上传、自动解析元数据、去重、重命名并入库，含 CJK 检测、TTC 子字体管理、字体预览、家族分组、多选下载等功能。
 
 ## 功能

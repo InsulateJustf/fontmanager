@@ -612,6 +612,53 @@ def remove_tag_from_font(font_id, tag_id):
     return jsonify({"status": "ok"})
 
 
+
+
+@app.route("/api/fonts/batch/tags", methods=["POST"])
+def batch_add_tags():
+    """批量为多个字体添加标签"""
+    data = request.get_json()
+    font_ids = data.get("font_ids", [])
+    tag_id = data.get("tag_id")
+    print(f"Batch add tags: font_ids={font_ids}, tag_id={tag_id}")
+    if not font_ids or not tag_id:
+        return jsonify({"status": "error", "message": "font_ids and tag_id required"}), 400
+    
+    # 验证标签是否存在
+    tags = db.get_all_tags()
+    tag_exists = any(t["id"] == tag_id for t in tags)
+    if not tag_exists:
+        return jsonify({"status": "error", "message": "Tag not found"}), 404
+    
+    # 验证字体是否存在
+    for font_id in font_ids:
+        font = db.get_font_by_id(font_id)
+        if not font:
+            return jsonify({"status": "error", "message": f"Font {font_id} not found"}), 404
+    
+    try:
+        db.add_font_tag_batch(font_ids, tag_id)
+        return jsonify({"status": "ok", "message": f"已为 {len(font_ids)} 个字体添加标签"})
+    except Exception as e:
+        print(f"Batch add tags error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/fonts/batch/tags", methods=["DELETE"])
+def batch_remove_tags():
+    """批量从多个字体删除标签"""
+    data = request.get_json()
+    font_ids = data.get("font_ids", [])
+    tag_id = data.get("tag_id")
+    if not font_ids or not tag_id:
+        return jsonify({"status": "error", "message": "font_ids and tag_id required"}), 400
+    
+    try:
+        db.remove_font_tag_batch(font_ids, tag_id)
+        return jsonify({"status": "ok", "message": f"已从 {len(font_ids)} 个字体删除标签"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 def scan_fonts_directory():
     """Scan FONT_STORAGE on startup: auto-import and rename orphan font files."""
     if not os.path.isdir(FONT_STORAGE):
@@ -631,6 +678,7 @@ def scan_fonts_directory():
     # Scan FONT_STORAGE: both flat files and subdirectories
     all_files = []
     for entry in os.listdir(FONT_STORAGE):
+        if entry == "backup": continue
         entry_path = os.path.join(FONT_STORAGE, entry)
         if os.path.isfile(entry_path):
             all_files.append((entry, entry_path))
@@ -820,10 +868,19 @@ def migrate_flat_to_subdirs():
         print("迁移完成: {} 个字体家族归入子目录".format(moved))
 
 
+
+
+def setup_database_path():
+    """Set database path to FONT_STORAGE directory."""
+    db_path = os.path.join(FONT_STORAGE, "fontmanager.db")
+    db.set_db_path(db_path)
+
+
 if __name__ == "__main__":
     args = parse_args()
     FONT_STORAGE = os.path.abspath(args.storage)
     ensure_storage()
+    setup_database_path()
     db.init_db()
     db.init_tags_db()
     migrate_flat_to_subdirs()
@@ -831,4 +888,5 @@ if __name__ == "__main__":
     scan_fonts_directory()
     print("FontManager starting on http://{}:{}".format(args.host, args.port))
     print("Font storage: {}".format(FONT_STORAGE))
+    print("Database: {}".format(db.get_db_path()))
     serve(app, host=args.host, port=args.port)
