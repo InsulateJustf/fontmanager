@@ -16,6 +16,7 @@
                        ├── GET  /api/fonts/<id>/subfonts     → TTC 子字体列表
                        ├── GET  /api/fonts/<id>/cjk          → CJK 支持检测
                        ├── DELETE /api/fonts/<id>            → 删除字体（二次确认）
+                       ├── POST /api/fonts/<id>/restore     → 还原字体到备份版本
                        ├── GET  /api/fonts/download-all      → 打包下载全部 ZIP
                        ├── GET  /api/fonts/download-family   → 按家族下载 ZIP
                        ├── POST /api/fonts/download-selected → 多选下载 ZIP
@@ -55,11 +56,12 @@ fontmanager/
 │   ├── package.json
 │   └── vite.config.ts
 ├── static/                  # Vite 构建输出（Flask 直接服务）
-└── fonts/                   # 默认字体存储目录 (gitignore)
-    ├── 单字体文件.ttf        # 单字重家族：扁平存储
-    └── 多字重家族/           # 多字重家族：按家族名归入子目录
-        ├── Family-Bold.otf
-        └── Family-Light.otf
+├── fonts/                   # 默认字体存储目录 (gitignore)
+│   ├── 单字体文件.ttf        # 单字重家族：扁平存储
+│   ├── 多字重家族/           # 多字重家族：按家族名归入子目录
+│   │   ├── Family-Bold.otf
+│   │   └── Family-Light.otf
+│   └── backup/               # 字体备份目录（修改前自动备份）
 ```
 
 ## 核心实现
@@ -106,7 +108,20 @@ fontmanager/
 - **TTC 优化**: cmap 只检查第一个子字体（共享字形），name table 采样最多 5 个子字体
 - **警告**: 当检测到日文字形但无简/繁中文字形时，提示"该子字体使用日本字形，中文显示可能不规范"
 
-### 4. cmap 指纹与名称修正 (font_parser.py)
+### 4. 字形比对与备份还原
+
+- **字形比对**: `compare_font_glyphs()` 比对两个字体文件的字形数据（charstring 指令）
+  - 采样 100 个字形进行比对，确保修改后数据无损坏
+  - 返回 `{match, checked, mismatches, error}` 结构
+- **备份机制**: 修改字体前自动备份到 `fonts/backup/` 目录
+  - 备份文件名格式: `{原始文件名}_{时间戳}.{扩展名}`
+  - 备份路径存储在数据库 `backup_filename` 字段
+- **还原机制**: 
+  - 自动还原: 字形比对失败时自动还原原文件
+  - 手动还原: 通过 `/api/fonts/<id>/restore` API 还原
+  - 前端入口: 双击预览面板标题栏显示还原按钮（隐藏设计，防止误操作）
+
+### 5. cmap 指纹与名称修正 (font_parser.py)
 
 - `compute_cmap_fingerprint(filepath)` — 对 TTF/OTF 计算 cmap 指纹（hash + 字形数 + 版本号）
 - `get_raw_family_name(filepath)` — 获取清洗前的原始 family_name
@@ -133,6 +148,7 @@ SQLite 表 `fonts`:
 | cjk_info | TEXT (JSON) | CJK 支持信息缓存 |
 | subfonts_info | TEXT (JSON) | TTC 子字体列表缓存 |
 | cmap_fingerprint | TEXT (JSON) | cmap 指纹缓存（hash + glyph_count + version） |
+| backup_filename | TEXT | 备份文件路径（修改前自动备份） |
 | created_at | TIMESTAMP | 入库时间 |
 
 - UNIQUE 约束: `(family_name, style_name)`
@@ -204,6 +220,7 @@ fonts/
 | GET | `/api/fonts/<id>/subfonts` | TTC 子字体列表 (缓存) |
 | GET | `/api/fonts/<id>/cjk` | CJK 支持信息 (缓存)；`?subfont=N` 检测特定子字体 |
 | DELETE | `/api/fonts/<id>` | 删除字体 (文件+记录) |
+| POST | `/api/fonts/<id>/restore` | 还原字体到备份版本 |
 | GET | `/api/fonts/download-all` | 打包所有字体为 ZIP 下载 |
 | GET | `/api/fonts/download-family` | 按家族名打包 ZIP；`?name=<family_name>` |
 | POST | `/api/fonts/download-selected` | 多选下载 ZIP；body: `{ids: number[]}` |
@@ -226,6 +243,7 @@ fonts/
   - 字号滑块 (12-120px)
   - CJK 警告提示（日文字形警告）
   - 删除操作（二次确认）
+  - 还原操作（双击标题栏显示，隐藏设计防误触）
 - **上传结果 (UploadResults.tsx)**: 逐条显示状态图标（✅成功 / ⚠️重复 / ⏭️跳过系统字体 / ❌失败）
 - **响应式**: 640px 以下隐藏格式/大小列
 
@@ -272,7 +290,8 @@ fonts/
 | 启动时自动扫描目录 | 支持手动放入字体文件后重启即入库 |
 | Windows 系统字体自动跳过 | 避免与系统自带字体冲突 |
 | 不合并同家族字体为 TTC | 原始文件保持不变，通过前端分组+批量下载实现等效功能 |
-| 不修改字体文件本身 | fontTools 保存 CFF 字体会丢失数据，仅更新 DB 元数据 |
+| 修改字体前自动备份 | 原文件备份到 fonts/backup/，支持手动还原 |
+| 字形安全比对 | 修改后自动比对字形数据，异常时自动还原 |
 | 删除操作二次确认 | 两次 confirm 防止误删 |
 | 名称清洗不剥离单字中文权重 | 避免"华文细黑"→"华文"、"微软雅黑"→"微软雅"等误伤 |
 | 多字重家族用子目录存储 | 单字体扁平、多字体归入 `fonts/FamilyName/`，保持目录整洁 |

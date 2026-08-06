@@ -19,6 +19,8 @@
 - **启动自动扫描** — 服务启动时自动扫描字体存储目录，将未入库的字体自动导入
 - **删除二次确认** — 两次确认后才会执行删除，防止误删
 - **非标准命名修正** — 自动检测字重藏在 family 名中的字体（如 HomuraM 系列），修正元数据
+- **字体备份与还原** — 修改字体前自动备份原文件到 `fonts/backup/`，支持手动还原到原始版本
+- **字形安全比对** — 修改字体后自动比对字形数据，确保无损坏，异常时自动还原
 
 ## 技术栈
 
@@ -147,6 +149,7 @@ python app.py --port 9090 --storage /path/to/fonts
 | GET | `/api/fonts/download-all` | 打包下载全部字体（ZIP） |
 | GET | `/api/fonts/download-family` | 按家族下载 ZIP（`?name=<family_name>`） |
 | POST | `/api/fonts/download-selected` | 多选下载 ZIP（body: `{ids: number[]}`） |
+| POST | `/api/fonts/<id>/restore` | 还原字体到备份版本 |
 
 ## 项目结构
 
@@ -173,9 +176,10 @@ fontmanager/
 │   ├── package.json
 │   └── vite.config.ts
 ├── static/                 # Vite 构建输出（Flask 直接服务）
-└── fonts/                  # 默认字体存储目录（.gitignore）
-    ├── 单字体文件.ttf       # 单字重家族：扁平存储
-    └── 多字重家族/          # 多字重家族：按家族名归入子目录
+├── fonts/                  # 默认字体存储目录（.gitignore）
+│   ├── 单字体文件.ttf       # 单字重家族：扁平存储
+│   ├── 多字重家族/          # 多字重家族：按家族名归入子目录
+│   └── backup/              # 字体备份目录（修改前自动备份）
 ```
 
 ## 存储策略
@@ -218,6 +222,7 @@ SQLite 表 `fonts`：
 | cjk_info | TEXT (JSON) | CJK 支持信息缓存 |
 | subfonts_info | TEXT (JSON) | TTC 子字体列表缓存 |
 | cmap_fingerprint | TEXT (JSON) | cmap 指纹缓存 |
+| backup_filename | TEXT | 备份文件路径 |
 | created_at | TIMESTAMP | 入库时间 |
 
 唯一约束：`(family_name, style_name)`
