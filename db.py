@@ -290,3 +290,23 @@ def get_font_tags(font_id):
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def add_font_tag_batch(font_ids, tag_id):
+    """批量为多个字体添加标签"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    for font_id in font_ids:
+        cursor.execute("INSERT OR IGNORE INTO font_tags (font_id, tag_id) VALUES (?, ?)", (font_id, tag_id))
+    conn.commit()
+    conn.close()
+
+
+def remove_font_tag_batch(font_ids, tag_id):
+    """批量从多个字体删除标签"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    for font_id in font_ids:
+        cursor.execute("DELETE FROM font_tags WHERE font_id=? AND tag_id=?", (font_id, tag_id))
+    conn.commit()
+    conn.close()

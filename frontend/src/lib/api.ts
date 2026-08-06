@@ -182,6 +182,28 @@ export async function downloadSelectedFonts(ids: number[]): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
+
+
+export async function batchAddTagToFonts(fontIds: number[], tagId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/fonts/batch/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ font_ids: fontIds, tag_id: tagId }),
+  })
+  const data = await res.json()
+  if (data.status !== 'ok') throw new Error(data.message || 'Failed to add tag to fonts')
+}
+
+export async function batchRemoveTagFromFonts(fontIds: number[], tagId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/fonts/batch/tags`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ font_ids: fontIds, tag_id: tagId }),
+  })
+  const data = await res.json()
+  if (data.status !== 'ok') throw new Error(data.message || 'Failed to remove tag from fonts')
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
