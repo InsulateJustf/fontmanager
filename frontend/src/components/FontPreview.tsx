@@ -25,6 +25,7 @@ import {
   fetchSubFonts,
   getFontFileUrl,
   deleteFont,
+  restoreFont,
   formatFileSize,
 } from '@/lib/api'
 
@@ -105,6 +106,22 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
       }
     }
   }, [font, open, selectedSubfont])
+
+  const [showRestore, setShowRestore] = useState(false)
+  
+  const handleRestore = async () => {
+    if (!font) return
+    if (!confirm(`确定要还原 "${font.family_name} - ${font.style_name}" 到原始版本？`)) return
+    try {
+      const result = await restoreFont(font.id)
+      alert(result.message)
+      onClose()
+      window.location.reload()
+    } catch (err) {
+      console.error('Restore failed:', err)
+      alert('还原失败: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
 
   if (!font) return null
 
@@ -252,6 +269,26 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
             删除
           </Button>
         </div>
+        
+        {/* Hidden restore button - double-click title to reveal */}
+        <div 
+          className="pt-2 text-center" 
+          onDoubleClick={() => setShowRestore(!showRestore)}
+          style={{ cursor: 'default', userSelect: 'none' }}
+        >
+          <span className="text-xs text-gray-400">双击此处显示还原选项</span>
+        </div>
+        {showRestore && (
+          <div className="flex gap-2 pt-2">
+            <Button 
+              variant="outline" 
+              className="flex-1" 
+              onClick={handleRestore}
+            >
+              还原到原始版本
+            </Button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   )

@@ -16,7 +16,8 @@ from font_parser import (parse_font, generate_filename, detect_format,
                          get_ttc_subfonts, get_cjk_support, is_windows_builtin,
                          compute_cmap_fingerprint, is_non_standard_naming,
                          extract_weight_from_name, detect_common_base_name,
-                         rewrite_font_names, get_raw_family_name)
+                         rewrite_font_names, get_raw_family_name,
+                         compare_font_glyphs)
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -43,6 +44,49 @@ def _is_more_complete(new_fmt, new_size, old_fmt, old_size):
 def _sanitize_dirname(name: str) -> str:
     """Sanitize a family name for use as a directory name."""
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
+
+
+def _get_backup_dir():
+    """Get or create the backup directory."""
+    backup_dir = os.path.join(FONT_STORAGE, "backup")
+    os.makedirs(backup_dir, exist_ok=True)
+    return backup_dir
+
+
+def _backup_font(src_path: str, original_name: str) -> str:
+    """Backup a font file before modification.
+    
+    Returns the backup file path, or None on failure.
+    """
+    try:
+        backup_dir = _get_backup_dir()
+        # Use timestamp to avoid overwriting
+        import time
+        timestamp = int(time.time())
+        base, ext = os.path.splitext(original_name)
+        backup_name = f"{base}_{timestamp}{ext}"
+        backup_path = os.path.join(backup_dir, backup_name)
+        shutil.copy2(src_path, backup_path)
+        return backup_path
+    except Exception as e:
+        print(f"  ⚠️  备份失败: {e}")
+        return None
+
+
+def _restore_font(backup_path: str, dest_path: str) -> bool:
+    """Restore a font file from backup.
+    
+    Returns True on success.
+    """
+    try:
+        if not os.path.exists(backup_path):
+            print(f"  ❌ 备份文件不存在: {backup_path}")
+            return False
+        shutil.copy2(backup_path, dest_path)
+        return True
+    except Exception as e:
+        print(f"  ❌ 还原失败: {e}")
+        return False
 
 
 def _consolidate_family(family_name: str):
@@ -118,6 +162,7 @@ def _process_single_file(file_storage):
 
         # ── Cmap fingerprint & naming correction (TTF/OTF only) ──
         cmap_fp = None
+        backup_path = None  # Will be set if rewrite_font_names is called
         if fmt in ("ttf", "otf"):
             cmap_fp = compute_cmap_fingerprint(tmp_path)
             if cmap_fp:
@@ -137,7 +182,23 @@ def _process_single_file(file_storage):
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
+                        # Backup original file before modification
+                        backup_path = _backup_font(tmp_path, original_name)
+                        
                         if rewrite_font_names(tmp_path, base, weight):
+                            # Compare glyphs to ensure modification didn't corrupt data
+                            if backup_path:
+                                cmp = compare_font_glyphs(backup_path, tmp_path)
+                                if not cmp["match"]:
+                                    print(f"  ⚠️  字形数据不匹配，自动还原: {cmp['mismatches'][:3]}")
+                                    if _restore_font(backup_path, tmp_path):
+                                        # Use original metadata, don't rename
+                                        pass
+                                    else:
+                                        # Restore failed, skip this file
+                                        return {"filename": original_name, "status": "error",
+                                                "message": "字形比对失败且还原失败"}
+                            
                             family_name = base
                             style_name = weight
                             meta = parse_font(tmp_path)
@@ -233,6 +294,7 @@ def _process_single_file(file_storage):
             stored_filename=stored_filename, original_filename=original_name,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
             cmap_fingerprint=cmap_fp,
+            backup_filename=backup_path,
         )
 
         msg = "Added: {} - {}".format(family_name, style_name)
@@ -277,6 +339,41 @@ def delete_font(font_id):
                             "message": "Record deleted but file removal failed: {}".format(e)})
     return jsonify({"status": "ok",
                     "message": "Deleted: {} - {}".format(font["family_name"], font["style_name"])})
+
+
+@app.route("/api/fonts/<int:font_id>/restore", methods=["POST"])
+def restore_font(font_id):
+    """Restore a font file from backup."""
+    font = db.get_font_by_id(font_id)
+    if font is None:
+        return jsonify({"status": "error", "message": "Font not found"}), 404
+    
+    # Get backup path from database
+    backup_path = font.get("backup_filename")
+    if not backup_path or not os.path.exists(backup_path):
+        return jsonify({"status": "error", 
+                        "message": "未找到备份文件"}), 404
+    
+    # Restore the file
+    stored = font["stored_filename"]
+    file_path = os.path.join(FONT_STORAGE, stored)
+    if _restore_font(backup_path, file_path):
+        # Update DB metadata (re-parse the restored file)
+        meta = parse_font(file_path)
+        file_size = os.path.getsize(file_path)
+        file_hash = db.compute_file_hash(file_path)
+        
+        db.replace_font(
+            font_id, meta["family_name"], meta["style_name"],
+            meta["format"], file_size, file_hash,
+            stored, font["original_filename"],
+            None, None  # Will be re-cached on next access
+        )
+        
+        return jsonify({"status": "ok",
+                        "message": "已还原: {} - {}".format(meta["family_name"], meta["style_name"])})
+    else:
+        return jsonify({"status": "error", "message": "还原失败"}), 500
 
 
 @app.route("/api/fonts/<int:font_id>/file", methods=["GET"])
@@ -564,6 +661,7 @@ def scan_fonts_directory():
         family_name = meta["family_name"]
         style_name = meta["style_name"]
         fmt = meta["format"]
+        backup_path = None  # Will be set if rewrite_font_names is called
 
         # ── Cmap fingerprint & naming correction (TTF/OTF only) ──
         cmap_fp = None
@@ -584,7 +682,22 @@ def scan_fonts_directory():
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
+                        # Backup original file before modification
+                        backup_path = _backup_font(fpath, fname)
+                        
                         if rewrite_font_names(fpath, base, weight):
+                            # Compare glyphs to ensure modification didn't corrupt data
+                            if backup_path:
+                                cmp = compare_font_glyphs(backup_path, fpath)
+                                if not cmp["match"]:
+                                    print(f"  ⚠️  字形数据不匹配，自动还原: {cmp['mismatches'][:3]}")
+                                    if _restore_font(backup_path, fpath):
+                                        # Use original metadata
+                                        pass
+                                    else:
+                                        print("  ❌ 还原失败，跳过此文件")
+                                        continue
+                            
                             family_name = base
                             style_name = weight
                             meta = parse_font(fpath)
@@ -676,6 +789,7 @@ def scan_fonts_directory():
             stored_filename=stored_filename, original_filename=fname,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
             cmap_fingerprint=cmap_fp,
+            backup_filename=backup_path,
         )
         db_families.add((family_name, style_name))
         imported += 1

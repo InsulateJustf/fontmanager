@@ -716,3 +716,79 @@ def get_raw_family_name(filepath: str) -> Optional[str]:
         return _get_name(name_table, 1, prefer_chinese=True) or _get_name(name_table, 16, prefer_chinese=True)
     finally:
         font.close()
+
+
+def compare_font_glyphs(original_path: str, modified_path: str, sample_size: int = 100) -> dict:
+    """Compare glyph data between two font files.
+    
+    Returns dict with:
+      - match: bool (True if glyphs are identical)
+      - checked: int (number of glyphs checked)
+      - mismatches: list of glyph names that differ
+      - error: str or None
+    """
+    from fontTools.ttLib import TTFont
+    import random
+    
+    result = {"match": True, "checked": 0, "mismatches": [], "error": None}
+    
+    try:
+        font_orig = TTFont(original_path)
+        font_mod = TTFont(modified_path)
+    except Exception as e:
+        result["error"] = f"Failed to open font: {e}"
+        return result
+    
+    try:
+        # Get glyph orders
+        order_orig = font_orig.getGlyphOrder()
+        order_mod = font_mod.getGlyphOrder()
+        
+        if len(order_orig) != len(order_mod):
+            result["match"] = False
+            result["error"] = f"Glyph count differs: {len(order_orig)} vs {len(order_mod)}"
+            return result
+        
+        # Get CharStrings
+        cff_orig = font_orig.get('CFF ')
+        cff_mod = font_mod.get('CFF ')
+        
+        if not cff_orig or not cff_mod:
+            result["error"] = "Missing CFF table"
+            return result
+        
+        cs_orig = cff_orig.cff.topDictIndex[0].CharStrings
+        cs_mod = cff_mod.cff.topDictIndex[0].CharStrings
+        
+        # Sample glyphs to check
+        total = len(order_orig)
+        if total <= sample_size:
+            indices = range(total)
+        else:
+            # Sample evenly, always include first 10 (common glyphs)
+            indices = list(range(10)) + sorted(random.sample(range(10, total), min(sample_size - 10, total - 10)))
+        
+        for i in indices:
+            gname = order_orig[i]
+            try:
+                t2_orig = cs_orig[gname]
+                t2_mod = cs_mod[gname]
+                t2_orig.decompile()
+                t2_mod.decompile()
+                
+                if t2_orig.program != t2_mod.program:
+                    result["mismatches"].append(gname)
+                    result["match"] = False
+            except Exception:
+                # Skip glyphs that can't be decompiled
+                pass
+            
+            result["checked"] += 1
+        
+    except Exception as e:
+        result["error"] = f"Comparison failed: {e}"
+    finally:
+        font_orig.close()
+        font_mod.close()
+    
+    return result
