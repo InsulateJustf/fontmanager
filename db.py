@@ -7,11 +7,24 @@ import hashlib
 from typing import Optional
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fontmanager.db")
+_DB_PATH = None
+
+def set_db_path(path):
+    """Set the database file path."""
+    global _DB_PATH
+    _DB_PATH = path
+
+def get_db_path():
+    """Get the current database file path."""
+    if _DB_PATH is not None:
+        return _DB_PATH
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "fontmanager.db")
+
+DB_PATH = get_db_path()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 

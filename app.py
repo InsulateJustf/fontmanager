@@ -820,10 +820,19 @@ def migrate_flat_to_subdirs():
         print("迁移完成: {} 个字体家族归入子目录".format(moved))
 
 
+
+
+def setup_database_path():
+    """Set database path to FONT_STORAGE directory."""
+    db_path = os.path.join(FONT_STORAGE, "fontmanager.db")
+    db.set_db_path(db_path)
+
+
 if __name__ == "__main__":
     args = parse_args()
     FONT_STORAGE = os.path.abspath(args.storage)
     ensure_storage()
+    setup_database_path()
     db.init_db()
     db.init_tags_db()
     migrate_flat_to_subdirs()
@@ -831,4 +840,5 @@ if __name__ == "__main__":
     scan_fonts_directory()
     print("FontManager starting on http://{}:{}".format(args.host, args.port))
     print("Font storage: {}".format(FONT_STORAGE))
+    print("Database: {}".format(db.get_db_path()))
     serve(app, host=args.host, port=args.port)
