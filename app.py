@@ -137,12 +137,7 @@ def _process_single_file(file_storage):
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
-                        if fmt == "otf":
-                            # Don't modify CFF font files — font.save() corrupts
-                            # CID-keyed CFF table data. Only update DB metadata.
-                            family_name = base
-                            style_name = weight
-                        elif rewrite_font_names(tmp_path, base, weight):
+                        if rewrite_font_names(tmp_path, base, weight):
                             family_name = base
                             style_name = weight
                             meta = parse_font(tmp_path)
@@ -589,13 +584,7 @@ def scan_fonts_directory():
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
-                        if fmt == "otf":
-                            # Don't modify CFF font files — font.save() corrupts
-                            # CID-keyed CFF table data. Only update DB metadata.
-                            family_name = base
-                            style_name = weight
-                            print("  🔧 修正命名(DB): {} -> {} - {}".format(fname, family_name, style_name))
-                        elif rewrite_font_names(fpath, base, weight):
+                        if rewrite_font_names(fpath, base, weight):
                             family_name = base
                             style_name = weight
                             meta = parse_font(fpath)
