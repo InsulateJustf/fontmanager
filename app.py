@@ -40,6 +40,34 @@ def _is_more_complete(new_fmt, new_size, old_fmt, old_size):
     return new_size > old_size
 
 
+def _sanitize_dirname(name: str) -> str:
+    """Sanitize a family name for use as a directory name."""
+    return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
+
+
+def _consolidate_family(family_name: str):
+    """Move flat files of a family into a subdirectory when 2+ fonts exist."""
+    dir_name = _sanitize_dirname(family_name)
+    family_dir = os.path.join(FONT_STORAGE, dir_name)
+    os.makedirs(family_dir, exist_ok=True)
+    for font in db.get_fonts_by_family(family_name):
+        stored = font["stored_filename"]
+        if "/" in stored or "\\" in stored:
+            continue
+        old_path = os.path.join(FONT_STORAGE, stored)
+        if not os.path.exists(old_path):
+            continue
+        new_path = os.path.join(family_dir, stored)
+        if os.path.exists(new_path):
+            continue
+        shutil.move(old_path, new_path)
+        new_stored = "{}/{}".format(dir_name, stored)
+        conn = db.get_connection()
+        conn.execute("UPDATE fonts SET stored_filename=? WHERE id=?", (new_stored, font["id"]))
+        conn.commit()
+        conn.close()
+
+
 def get_default_storage():
     if os.name == "nt":
         return DEFAULT_STORAGE_WINDOWS
@@ -159,15 +187,33 @@ def _process_single_file(file_storage):
                         "family_name": family_name, "style_name": style_name}
 
         new_filename = generate_filename(family_name, style_name, ext.lstrip("."))
-        dest_path = os.path.join(FONT_STORAGE, new_filename)
-        counter = 1
-        while os.path.exists(dest_path):
-            base, ext_part = os.path.splitext(new_filename)
-            new_filename = "{}_{}{}".format(base, counter, ext_part)
+        family_fonts = db.get_fonts_by_family(family_name)
+        use_subdir = len(family_fonts) > 0
+        if use_subdir:
+            family_dir = os.path.join(FONT_STORAGE, _sanitize_dirname(family_name))
+            os.makedirs(family_dir, exist_ok=True)
+            dest_path = os.path.join(family_dir, new_filename)
+            counter = 1
+            while os.path.exists(dest_path):
+                base, ext_part = os.path.splitext(new_filename)
+                new_filename = "{}_{}{}".format(base, counter, ext_part)
+                dest_path = os.path.join(family_dir, new_filename)
+                counter += 1
+            stored_filename = "{}/{}".format(_sanitize_dirname(family_name), new_filename)
+        else:
             dest_path = os.path.join(FONT_STORAGE, new_filename)
-            counter += 1
-
+            counter = 1
+            while os.path.exists(dest_path):
+                base, ext_part = os.path.splitext(new_filename)
+                new_filename = "{}_{}{}".format(base, counter, ext_part)
+                dest_path = os.path.join(FONT_STORAGE, new_filename)
+                counter += 1
+            stored_filename = new_filename
         shutil.move(tmp_path, dest_path)
+
+        # If this family now has 2+ fonts, move existing flat ones into subdir
+        if use_subdir:
+            _consolidate_family(family_name)
         tmp_path = None
 
         file_size = os.path.getsize(dest_path)
@@ -184,7 +230,7 @@ def _process_single_file(file_storage):
         font_id = db.insert_font(
             family_name=family_name, style_name=style_name, fmt=fmt,
             file_size=file_size, file_hash=file_hash,
-            stored_filename=new_filename, original_filename=original_name,
+            stored_filename=stored_filename, original_filename=original_name,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
             cmap_fingerprint=cmap_fp,
         )
@@ -485,10 +531,19 @@ def scan_fonts_directory():
     imported = 0
     renamed = 0
 
-    for fname in os.listdir(FONT_STORAGE):
-        fpath = os.path.join(FONT_STORAGE, fname)
-        if not os.path.isfile(fpath):
-            continue
+    # Scan FONT_STORAGE: both flat files and subdirectories
+    all_files = []
+    for entry in os.listdir(FONT_STORAGE):
+        entry_path = os.path.join(FONT_STORAGE, entry)
+        if os.path.isfile(entry_path):
+            all_files.append((entry, entry_path))
+        elif os.path.isdir(entry_path):
+            for sub in os.listdir(entry_path):
+                sub_path = os.path.join(entry_path, sub)
+                if os.path.isfile(sub_path):
+                    all_files.append((sub, sub_path))
+
+    for fname, fpath in all_files:
         ext = os.path.splitext(fname)[1].lower()
         if ext not in (".ttf", ".otf", ".ttc"):
             continue
@@ -602,10 +657,14 @@ def scan_fonts_directory():
         else:
             cjk_info = get_cjk_support(new_path, font_number=0)
 
+        if use_subdir:
+            stored_filename = "{}/{}".format(_sanitize_dirname(family_name), new_filename)
+        else:
+            stored_filename = new_filename
         db.insert_font(
             family_name=family_name, style_name=style_name, fmt=fmt,
             file_size=file_size, file_hash=file_hash,
-            stored_filename=new_filename, original_filename=fname,
+            stored_filename=stored_filename, original_filename=fname,
             cjk_info=cjk_info, subfonts_info=subfonts_info,
             cmap_fingerprint=cmap_fp,
         )
@@ -619,12 +678,32 @@ def scan_fonts_directory():
 
 
 
+def migrate_flat_to_subdirs():
+    """Move existing flat font files into subdirs only for multi-font families."""
+    all_fonts = db.get_all_fonts()
+    # Count fonts per family
+    family_count = {}
+    for font in all_fonts:
+        fn = font["family_name"]
+        family_count[fn] = family_count.get(fn, 0) + 1
+    # Only consolidate families with 2+ fonts
+    moved = 0
+    for family, count in family_count.items():
+        if count < 2:
+            continue
+        _consolidate_family(family)
+        moved += 1
+    if moved > 0:
+        print("迁移完成: {} 个字体家族归入子目录".format(moved))
+
+
 if __name__ == "__main__":
     args = parse_args()
     FONT_STORAGE = os.path.abspath(args.storage)
     ensure_storage()
     db.init_db()
     db.init_tags_db()
+    migrate_flat_to_subdirs()
     print("扫描字体目录: {}".format(FONT_STORAGE))
     scan_fonts_directory()
     print("FontManager starting on http://{}:{}".format(args.host, args.port))
