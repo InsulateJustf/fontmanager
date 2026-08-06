@@ -94,7 +94,7 @@ _WEIGHT_ZH = sorted([
 _DESCRIPTORS = sorted([
     "简入繁出", "繁入简出", "简入繁出版", "繁入简出版",
     "Demo", "Trial", "Free", "Personal", "Commercial",
-    "Subset", "Full",
+    "Subset", "Full", "HW", "HW.",
 ], key=len, reverse=True)
 
 _REGION_SUFFIXES = sorted([

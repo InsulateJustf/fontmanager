@@ -2,6 +2,7 @@
 
 [![纯 AI 零人工](https://img.shields.io/badge/🤖_纯_AI_零人工-100%25-blueviolet?style=flat-square)](https://github.com/InsulateJustf/fontmanager)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/InsulateJustf/fontmanager/build.yml?branch=main&style=flat-square&label=main%20build)](https://github.com/InsulateJustf/fontmanager/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/InsulateJustf/fontmanager?style=flat-square&color=green)](https://github.com/InsulateJustf/fontmanager/releases/latest)
 
 供设计师团队使用的 Web 字体管理工具。支持拖拽上传、自动解析元数据、去重、重命名并入库，含 CJK 检测、TTC 子字体管理、字体预览、家族分组、多选下载等功能。
 
@@ -62,6 +63,14 @@ bash start.sh -s ~/MyFonts -p 9090
 1. 运行 `build.bat` 或通过 GitHub Actions 自动构建
 2. 将 `dist/FontManager.exe` 复制到服务器
 3. 双击运行，访问 `http://服务器IP:8080`
+
+> **⚠️ Windows Defender 误报说明**  
+> PyInstaller 打包的 exe 可能被 Windows Defender 识别为威胁（这是 PyInstaller 的已知问题，非实际病毒）。如果遇到此情况：
+> 1. 在弹出的威胁警告中选择「允许」或「还原」
+> 2. 或者打开 Windows 安全中心 → 病毒和威胁保护 → 管理设置 → 排除项，添加 FontManager.exe 所在文件夹
+> 3. 也可以将文件提交至 [Microsoft 误报分析页面](https://www.microsoft.com/en-us/wdsi/filesubmission) 进行申诉
+> 
+> 本项目代码完全开源，不含任何恶意代码。误报原因是 PyInstaller bootloader 的特征码被 AV 厂商标记，以及未签名的可执行文件更容易触发启发式检测。
 
 可选：使用 [NSSM](https://nssm.cc/) 注册为 Windows 服务：
 
