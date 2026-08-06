@@ -74,6 +74,7 @@ _COLLECT_LANGS = _ZH_LANGS | _EN_LANGS
 _WEIGHT_EN = sorted([
     "Thin", "Hairline",
     "Extra Light", "ExtraLight", "Ultra Light", "UltraLight",
+    "Semi Light", "SemiLight",
     "Demi Light", "DemiLight",
     "Light", "Regular", "Normal", "Medium",
     "Semi Bold", "SemiBold", "Demi Bold", "DemiBold",
@@ -186,20 +187,20 @@ def _strip_once(s: str) -> str:
         return new
     for sfx in _REGION_SUFFIXES:
         if result.endswith(sfx):
-            return result[:-len(sfx)].strip()
+            return result[:-len(sfx)].strip(" -_")
     for w in _WEIGHT_EN:
         if result.lower().endswith(w.lower()):
-            return result[:-len(w)].strip()
+            return result[:-len(w)].strip(" -_")
     for w in _WEIGHT_ZH:
         if result.endswith(w):
-            return result[:-len(w)].strip()
+            return result[:-len(w)].strip(" -_")
     for d in _DESCRIPTORS:
         if _is_cjk(d):
             if result.endswith(d):
-                return result[:-len(d)].strip()
+                return result[:-len(d)].strip(" -_")
         else:
             if result.lower().endswith(d.lower()):
-                return result[:-len(d)].strip()
+                return result[:-len(d)].strip(" -_")
     return result
 
 
@@ -521,3 +522,273 @@ def get_cjk_support(filepath: str, font_number: int = 0) -> dict:
         else:
             font.close()
 
+
+
+# ─── Cmap fingerprint & naming correction ────────────────────────────────────
+
+import hashlib
+
+
+def compute_cmap_fingerprint(filepath: str) -> Optional[dict]:
+    """Compute a lightweight cmap fingerprint for single TTF/OTF (not TTC).
+
+    Returns {"hash": str, "glyph_count": int, "version": str} or None on error.
+    """
+    fmt = detect_format(filepath)
+    if fmt != "ttf" and fmt != "otf":
+        return None
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return None
+    try:
+        cmap = font.getBestCmap()
+        if not cmap:
+            return None
+        # Hash first 200 sorted codepoints for a lightweight fingerprint
+        sample = sorted(cmap.keys())[:200]
+        h = hashlib.md5(str(sample).encode()).hexdigest()
+        glyph_count = len(cmap)
+
+        version = ""
+        name_table = font.get("name")
+        if name_table:
+            for r in name_table.names:
+                if r.nameID == 5 and r.platformID == 3 and r.langID == 1033:
+                    try:
+                        version = r.toUnicode().strip()
+                        break
+                    except Exception:
+                        pass
+
+        return {"hash": h, "glyph_count": glyph_count, "version": version}
+    finally:
+        font.close()
+
+
+def extract_weight_from_name(family_name: str) -> Tuple[str, str]:
+    """Extract weight word from family name if present.
+
+    Returns (base_name, weight). If no weight found, returns (family_name, "").
+    Example: "05HomuraM-SemiBold" -> ("HomuraM", "SemiBold")
+    """
+    # Try English weights (longest first)
+    for w in _WEIGHT_EN:
+        lower = family_name.lower()
+        if lower.endswith(w.lower()):
+            base = family_name[:len(family_name) - len(w)].strip(" -_")
+            # Strip leading digits (e.g., "05HomuraM" -> "HomuraM")
+            base = re.sub(r'^\d+', '', base).strip(" -_")
+            if base:
+                return base, w
+    # Try Chinese multi-char weights
+    for w in _WEIGHT_ZH:
+        if family_name.endswith(w):
+            base = family_name[:len(family_name) - len(w)].strip(" -_")
+            base = re.sub(r'^\d+', '', base).strip(" -_")
+            if base:
+                return base, w
+    return family_name, ""
+
+
+def detect_common_base_name(family_names: list) -> str:
+    """Detect the common base name from a list of family names that contain weights.
+
+    Example: ["01HomuraM-ExtraLight", "02HomuraM-Light", ...] -> "HomuraM"
+    """
+    bases = []
+    for name in family_names:
+        base, weight = extract_weight_from_name(name)
+        if weight:
+            bases.append(base)
+    if not bases:
+        return ""
+    # Return the shortest base (most likely the true name)
+    # All bases should be the same after extraction
+    return min(bases, key=len)
+
+
+def is_non_standard_naming(family_name: str, style_name: str) -> bool:
+    """Check if a font has non-standard naming (weight in family, style=Regular)."""
+    if style_name.lower() != "regular":
+        return False
+    _, weight = extract_weight_from_name(family_name)
+    return bool(weight)
+
+
+def rewrite_font_names(filepath: str, new_family: str, new_style: str) -> bool:
+    """Rewrite a font file's name table with corrected family/style names.
+
+    Modifies nameID 1, 2, 4, 16, 17. Keeps nameID 6 (PostScript) unchanged.
+    Returns True on success.
+
+    WARNING: Do NOT call this for OTF (CFF) fonts! fontTools.save() destructively
+    re-encodes CID-keyed CFF table data, losing up to 30% of the binary data and
+    causing browser rendering failures. For OTF fonts, only update DB metadata.
+    """
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return False
+
+    try:
+        name_table = font.get("name")
+        if name_table is None:
+            return False
+
+        new_full = "{} {}".format(new_family, new_style) if new_style != "Regular" else new_family
+
+        # Platforms to update: (platformID, encodingID, languageID)
+        targets = [
+            (1, 0, 0),       # Mac English
+            (3, 1, 1033),    # Windows English
+        ]
+        # Also add Chinese if present
+        zh_targets = [
+            (3, 1, 2052),    # Windows Chinese Simplified
+            (3, 1, 1028),    # Windows Chinese Traditional
+            (1, 1, 33),      # Mac Chinese
+        ]
+
+        for record in list(name_table.names):
+            pid, eid, lid = record.platformID, record.platEncID, record.langID
+
+            # Check if this is a target we should update
+            is_target = (pid, eid, lid) in targets
+            is_zh_target = (pid, eid, lid) in zh_targets
+
+            if not is_target and not is_zh_target:
+                continue
+
+            if record.nameID == 1:  # family name
+                record.string = new_family
+            elif record.nameID == 2:  # style name
+                record.string = new_style
+            elif record.nameID == 4:  # full name
+                record.string = new_full
+            elif record.nameID == 16:  # typographic family
+                record.string = new_family
+            elif record.nameID == 17:  # typographic style
+                record.string = new_style
+
+        # Update CFF internal names (used by macOS/WebKit for font matching)
+        cff = font.get("CFF ")
+        if cff is not None:
+            try:
+                cff_obj = cff.cff
+                for i in range(len(cff_obj.topDictIndex)):
+                    top = cff_obj.topDictIndex[i]
+                    top.FullName = new_full.encode("ascii", errors="replace")
+                    top.FamilyName = new_family.encode("ascii", errors="replace")
+                    if new_style.lower() != "regular":
+                        top.Weight = new_style.encode("ascii", errors="replace")
+                    else:
+                        top.Weight = b"Regular"
+            except Exception:
+                pass  # CFF update is best-effort
+
+        font.save(filepath)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            font.close()
+        except Exception:
+            pass
+
+
+def get_raw_family_name(filepath: str) -> Optional[str]:
+    """Get the raw family name (nameID=1 or 16) without cleaning."""
+    fmt = detect_format(filepath)
+    if fmt is None:
+        return None
+    if fmt == "ttc":
+        return None  # Skip TTC
+    try:
+        font = TTFont(filepath, fontNumber=0)
+    except Exception:
+        return None
+    try:
+        name_table = font.get("name")
+        if name_table is None:
+            return None
+        return _get_name(name_table, 1, prefer_chinese=True) or _get_name(name_table, 16, prefer_chinese=True)
+    finally:
+        font.close()
+
+
+def compare_font_glyphs(original_path: str, modified_path: str, sample_size: int = 100) -> dict:
+    """Compare glyph data between two font files.
+    
+    Returns dict with:
+      - match: bool (True if glyphs are identical)
+      - checked: int (number of glyphs checked)
+      - mismatches: list of glyph names that differ
+      - error: str or None
+    """
+    from fontTools.ttLib import TTFont
+    import random
+    
+    result = {"match": True, "checked": 0, "mismatches": [], "error": None}
+    
+    try:
+        font_orig = TTFont(original_path)
+        font_mod = TTFont(modified_path)
+    except Exception as e:
+        result["error"] = f"Failed to open font: {e}"
+        return result
+    
+    try:
+        # Get glyph orders
+        order_orig = font_orig.getGlyphOrder()
+        order_mod = font_mod.getGlyphOrder()
+        
+        if len(order_orig) != len(order_mod):
+            result["match"] = False
+            result["error"] = f"Glyph count differs: {len(order_orig)} vs {len(order_mod)}"
+            return result
+        
+        # Get CharStrings
+        cff_orig = font_orig.get('CFF ')
+        cff_mod = font_mod.get('CFF ')
+        
+        if not cff_orig or not cff_mod:
+            result["error"] = "Missing CFF table"
+            return result
+        
+        cs_orig = cff_orig.cff.topDictIndex[0].CharStrings
+        cs_mod = cff_mod.cff.topDictIndex[0].CharStrings
+        
+        # Sample glyphs to check
+        total = len(order_orig)
+        if total <= sample_size:
+            indices = range(total)
+        else:
+            # Sample evenly, always include first 10 (common glyphs)
+            indices = list(range(10)) + sorted(random.sample(range(10, total), min(sample_size - 10, total - 10)))
+        
+        for i in indices:
+            gname = order_orig[i]
+            try:
+                t2_orig = cs_orig[gname]
+                t2_mod = cs_mod[gname]
+                t2_orig.decompile()
+                t2_mod.decompile()
+                
+                if t2_orig.program != t2_mod.program:
+                    result["mismatches"].append(gname)
+                    result["match"] = False
+            except Exception:
+                # Skip glyphs that can't be decompiled
+                pass
+            
+            result["checked"] += 1
+        
+    except Exception as e:
+        result["error"] = f"Comparison failed: {e}"
+    finally:
+        font_orig.close()
+        font_mod.close()
+    
+    return result

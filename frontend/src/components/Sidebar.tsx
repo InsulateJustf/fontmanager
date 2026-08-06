@@ -71,28 +71,39 @@ export function Sidebar({
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
+
+    // Check if any dropped items are directories
     const items = e.dataTransfer.items
-    if (!items || items.length === 0) return
+    const hasDirectories = items && Array.from(items).some(
+      (item) => item.webkitGetAsEntry?.()?.isDirectory
+    )
 
-    const allFiles: File[] = []
-    for (let i = 0; i < items.length; i++) {
-      const entry = items[i].webkitGetAsEntry?.()
-      if (!entry) continue
-      if (entry.isFile) {
-        const file = await new Promise<File>((resolve, reject) =>
-          (entry as FileSystemFileEntry).file(resolve, reject)
-        )
-        allFiles.push(file)
-      } else if (entry.isDirectory) {
-        const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-        allFiles.push(...files)
+    if (hasDirectories) {
+      // Use webkitGetAsEntry to recursively read directories
+      const allFiles: File[] = []
+      for (let i = 0; i < items!.length; i++) {
+        const entry = items![i].webkitGetAsEntry?.()
+        if (!entry) continue
+        if (entry.isFile) {
+          const file = await new Promise<File>((resolve, reject) =>
+            (entry as FileSystemFileEntry).file(resolve, reject)
+          )
+          allFiles.push(file)
+        } else if (entry.isDirectory) {
+          const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+          allFiles.push(...files)
+        }
       }
-    }
-
-    if (allFiles.length > 0) {
-      const dt = new DataTransfer()
-      allFiles.forEach(f => dt.items.add(f))
-      await handleUpload(dt.files)
+      if (allFiles.length > 0) {
+        const dt = new DataTransfer()
+        allFiles.forEach(f => dt.items.add(f))
+        await handleUpload(dt.files)
+      }
+    } else {
+      // Simple case: individual files — use dataTransfer.files directly
+      if (e.dataTransfer.files.length > 0) {
+        await handleUpload(e.dataTransfer.files)
+      }
     }
   }
 

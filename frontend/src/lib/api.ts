@@ -89,6 +89,13 @@ export async function deleteFont(fontId: number): Promise<void> {
   if (data.status !== 'ok') throw new Error(data.message || 'Delete failed')
 }
 
+export async function restoreFont(fontId: number): Promise<{ message: string; backup_file: string }> {
+  const res = await fetch(`${API_BASE}/fonts/${fontId}/restore`, { method: 'POST' })
+  const data = await res.json()
+  if (data.status !== 'ok') throw new Error(data.message || 'Restore failed')
+  return data
+}
+
 export function getFontFileUrl(fontId: number, options?: { download?: boolean; subfont?: number }): string {
   let url = `${API_BASE}/fonts/${fontId}/file`
   const params = new URLSearchParams()
@@ -152,6 +159,27 @@ export async function downloadAllFonts(): Promise<void> {
 
 export function downloadFamilyFonts(familyName: string): void {
   window.open(`${API_BASE}/fonts/download-family?name=${encodeURIComponent(familyName)}`, '_blank')
+}
+
+export async function downloadSelectedFonts(ids: number[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/fonts/download-selected`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.message || 'Download failed')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `FontManager-${ids.length}个字体.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 export function formatFileSize(bytes: number): string {

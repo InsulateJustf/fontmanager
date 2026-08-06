@@ -36,6 +36,7 @@ def init_db():
             original_filename TEXT NOT NULL,
             cjk_info TEXT,
             subfonts_info TEXT,
+            backup_filename TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(family_name, style_name)
         )
@@ -47,6 +48,8 @@ def init_db():
             cursor.execute("ALTER TABLE fonts ADD COLUMN cjk_info TEXT")
         if "subfonts_info" not in existing:
             cursor.execute("ALTER TABLE fonts ADD COLUMN subfonts_info TEXT")
+        if "cmap_fingerprint" not in existing:
+            cursor.execute("ALTER TABLE fonts ADD COLUMN cmap_fingerprint TEXT")
     conn.commit()
     conn.close()
 
@@ -84,18 +87,22 @@ def get_font_by_family_style(family_name: str, style_name: str) -> Optional[dict
 
 
 def insert_font(family_name, style_name, fmt, file_size, file_hash,
-                stored_filename, original_filename, cjk_info=None, subfonts_info=None) -> int:
+                stored_filename, original_filename, cjk_info=None, subfonts_info=None,
+                cmap_fingerprint=None, backup_filename=None) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO fonts
            (family_name, style_name, format, file_size, file_hash,
-            stored_filename, original_filename, cjk_info, subfonts_info)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            stored_filename, original_filename, cjk_info, subfonts_info,
+            cmap_fingerprint, backup_filename)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (family_name, style_name, fmt, file_size, file_hash,
          stored_filename, original_filename,
          json.dumps(cjk_info, ensure_ascii=False) if cjk_info else None,
-         json.dumps(subfonts_info, ensure_ascii=False) if subfonts_info else None),
+         json.dumps(subfonts_info, ensure_ascii=False) if subfonts_info else None,
+         json.dumps(cmap_fingerprint, ensure_ascii=False) if cmap_fingerprint else None,
+         backup_filename),
     )
     font_id = cursor.lastrowid
     conn.commit()
@@ -104,19 +111,21 @@ def insert_font(family_name, style_name, fmt, file_size, file_hash,
 
 
 def replace_font(font_id, family_name, style_name, fmt, file_size, file_hash,
-                 stored_filename, original_filename, cjk_info=None, subfonts_info=None):
+                 stored_filename, original_filename, cjk_info=None, subfonts_info=None,
+                 backup_filename=None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         """UPDATE fonts SET
            family_name=?, style_name=?, format=?, file_size=?, file_hash=?,
-           stored_filename=?, original_filename=?, cjk_info=?, subfonts_info=?
+           stored_filename=?, original_filename=?, cjk_info=?, subfonts_info=?,
+           backup_filename=?
            WHERE id=?""",
         (family_name, style_name, fmt, file_size, file_hash,
          stored_filename, original_filename,
          json.dumps(cjk_info, ensure_ascii=False) if cjk_info else None,
          json.dumps(subfonts_info, ensure_ascii=False) if subfonts_info else None,
-         font_id),
+         backup_filename, font_id),
     )
     conn.commit()
     conn.close()
@@ -141,6 +150,20 @@ def get_fonts_by_family(family_name: str) -> list:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM fonts WHERE family_name=? ORDER BY style_name", (family_name,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_fonts_by_fingerprint(fingerprint_hash: str) -> list:
+    """Find fonts with matching cmap fingerprint hash (for TTF/OTF only)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    # cmap_fingerprint is stored as JSON; match on the hash field
+    cursor.execute(
+        "SELECT * FROM fonts WHERE cmap_fingerprint LIKE ?",
+        ('%"hash": "{}"%'.format(fingerprint_hash),),
+    )
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
