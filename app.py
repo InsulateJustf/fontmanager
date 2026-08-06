@@ -631,6 +631,7 @@ def scan_fonts_directory():
     # Scan FONT_STORAGE: both flat files and subdirectories
     all_files = []
     for entry in os.listdir(FONT_STORAGE):
+        if entry == "backup": continue
         entry_path = os.path.join(FONT_STORAGE, entry)
         if os.path.isfile(entry_path):
             all_files.append((entry, entry_path))
