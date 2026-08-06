@@ -25,9 +25,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
-import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package } from 'lucide-react'
+import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package, Check } from 'lucide-react'
 import type { Font, CJKInfo, Tag as TagType } from '@/lib/api'
-import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts } from '@/lib/api'
+import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts, downloadSelectedFonts } from '@/lib/api'
 
 interface FontTableProps {
   fonts: Font[]
@@ -61,6 +61,7 @@ export function FontTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [tagFontId, setTagFontId] = useState<number | null>(null)
   const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const pageSize = 50
 
   // Filter
@@ -142,6 +143,48 @@ export function FontTable({
       else next.add(family)
       return next
     })
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectFamily = (familyFonts: Font[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = familyFonts.every(f => next.has(f.id))
+      if (allSelected) {
+        familyFonts.forEach(f => next.delete(f.id))
+      } else {
+        familyFonts.forEach(f => next.add(f.id))
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const allFilteredIds = sorted.map(f => f.id)
+      const allSelected = allFilteredIds.every(id => prev.has(id))
+      if (allSelected) return new Set()
+      return new Set(allFilteredIds)
+    })
+  }
+
+  const selectedCount = selectedIds.size
+
+  const handleDownloadSelected = async () => {
+    if (selectedIds.size === 0) return
+    try {
+      await downloadSelectedFonts(Array.from(selectedIds))
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
   }
 
   const handleDelete = async (font: Font) => {
@@ -304,6 +347,19 @@ export function FontTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10 text-center">
+                <button
+                  className="inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors"
+                  onClick={toggleSelectAll}
+                  title={sorted.length > 0 && sorted.every(f => selectedIds.has(f.id)) ? '取消全选' : '全选'}
+                >
+                  {sorted.length > 0 && sorted.every(f => selectedIds.has(f.id)) ? (
+                    <Check className="h-3 w-3" />
+                  ) : selectedIds.size > 0 ? (
+                    <div className="w-2.5 h-0.5 bg-[hsl(var(--primary))]" />
+                  ) : null}
+                </button>
+              </TableHead>
               <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('family_name')}>
                 <div className="flex items-center justify-center gap-1">
                   字体名称
@@ -336,7 +392,7 @@ export function FontTable({
           <TableBody>
             {paginatedGroups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
+                <TableCell colSpan={8} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
                   暂无字体
                 </TableCell>
               </TableRow>
@@ -351,6 +407,18 @@ export function FontTable({
                   <React.Fragment key={group.family}>
                     {showHeader && (
                       <TableRow className="bg-muted/30 hover:bg-muted/50">
+                        <TableCell className="text-center">
+                          <button
+                            className="inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors"
+                            onClick={(e) => { e.stopPropagation(); toggleSelectFamily(group.fonts) }}
+                          >
+                            {group.fonts.every(f => selectedIds.has(f.id)) ? (
+                              <Check className="h-3 w-3" />
+                            ) : group.fonts.some(f => selectedIds.has(f.id)) ? (
+                              <div className="w-2.5 h-0.5 bg-[hsl(var(--primary))]" />
+                            ) : null}
+                          </button>
+                        </TableCell>
                         <TableCell className="font-medium text-center">
                           <button
                             className="inline-flex items-center gap-1 hover:underline"
@@ -395,6 +463,14 @@ export function FontTable({
                         className={`cursor-pointer ${showHeader ? 'bg-background' : ''}`}
                         onClick={() => onFontSelect(font)}
                       >
+                        <TableCell className="text-center">
+                          <button
+                            className={`inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors ${showHeader ? '' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); toggleSelect(font.id) }}
+                          >
+                            {selectedIds.has(font.id) && <Check className="h-3 w-3" />}
+                          </button>
+                        </TableCell>
                         <TableCell className={`font-medium text-center ${showHeader ? 'pl-8' : ''}`}>
                           {!showHeader && font.family_name}
                         </TableCell>
@@ -450,6 +526,24 @@ export function FontTable({
           </TableBody>
         </Table>
       </div>
+
+      {/* Selection action bar */}
+      {selectedCount > 0 && (
+        <div className="mt-3 flex items-center justify-between bg-[hsl(var(--card))] border rounded-lg px-4 py-2">
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            已选择 {selectedCount} 个字体
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+              取消选择
+            </Button>
+            <Button size="sm" onClick={handleDownloadSelected}>
+              <Download className="h-4 w-4 mr-1" />
+              下载选中
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

@@ -391,6 +391,36 @@ def download_family_fonts():
     )
 
 
+@app.route("/api/fonts/download-selected", methods=["POST"])
+def download_selected_fonts():
+    """Download selected fonts as a zip file."""
+    data = request.get_json()
+    font_ids = data.get("ids", [])
+    if not font_ids:
+        return jsonify({"status": "error", "message": "未选择字体"}), 400
+
+    fonts = [db.get_font_by_id(fid) for fid in font_ids]
+    fonts = [f for f in fonts if f is not None]
+    if not fonts:
+        return jsonify({"status": "error", "message": "未找到字体"}), 404
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for font in fonts:
+            file_path = os.path.join(FONT_STORAGE, font["stored_filename"])
+            if os.path.exists(file_path):
+                zf.write(file_path, font["stored_filename"])
+    zip_buffer.seek(0)
+
+    count = len(fonts)
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="FontManager-{}个字体.zip".format(count)
+    )
+
+
 @app.route("/api/tags", methods=["GET"])
 def list_tags():
     tags = db.get_all_tags()

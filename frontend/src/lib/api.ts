@@ -154,6 +154,27 @@ export function downloadFamilyFonts(familyName: string): void {
   window.open(`${API_BASE}/fonts/download-family?name=${encodeURIComponent(familyName)}`, '_blank')
 }
 
+export async function downloadSelectedFonts(ids: number[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/fonts/download-selected`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.message || 'Download failed')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `FontManager-${ids.length}个字体.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
