@@ -77,15 +77,26 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
     if (styleRef.current) styleRef.current.remove()
 
     const style = document.createElement('style')
-    style.textContent = `@font-face { font-family: '${faceName}'; src: url('${url}'); }`
+    // Determine font format for @font-face
+    const formatMap: Record<string, string> = { ttf: 'truetype', otf: 'opentype', ttc: 'truetype' }
+    const fontFormat = formatMap[font.format] || 'opentype'
+    style.textContent = `@font-face { font-family: '${faceName}'; src: url('${url}') format('${fontFormat}'); }`
     document.head.appendChild(style)
     styleRef.current = style
 
-    // Apply to preview area
-    const previewArea = document.getElementById('preview-area')
-    if (previewArea) {
-      previewArea.style.fontFamily = `'${faceName}', sans-serif`
+    // Apply to preview area after a small delay to handle sheet animation
+    const applyFont = () => {
+      const previewArea = document.getElementById('preview-area')
+      if (previewArea) {
+        previewArea.style.fontFamily = `'${faceName}', sans-serif`
+      }
     }
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      applyFont()
+      // Also try again after a short delay in case of animation
+      setTimeout(applyFont, 100)
+    })
 
     return () => {
       if (styleRef.current) {

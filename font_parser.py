@@ -621,6 +621,10 @@ def rewrite_font_names(filepath: str, new_family: str, new_style: str) -> bool:
 
     Modifies nameID 1, 2, 4, 16, 17. Keeps nameID 6 (PostScript) unchanged.
     Returns True on success.
+
+    WARNING: Do NOT call this for OTF (CFF) fonts! fontTools.save() destructively
+    re-encodes CID-keyed CFF table data, losing up to 30% of the binary data and
+    causing browser rendering failures. For OTF fonts, only update DB metadata.
     """
     try:
         font = TTFont(filepath, fontNumber=0)
@@ -666,6 +670,22 @@ def rewrite_font_names(filepath: str, new_family: str, new_style: str) -> bool:
                 record.string = new_family
             elif record.nameID == 17:  # typographic style
                 record.string = new_style
+
+        # Update CFF internal names (used by macOS/WebKit for font matching)
+        cff = font.get("CFF ")
+        if cff is not None:
+            try:
+                cff_obj = cff.cff
+                for i in range(len(cff_obj.topDictIndex)):
+                    top = cff_obj.topDictIndex[i]
+                    top.FullName = new_full.encode("ascii", errors="replace")
+                    top.FamilyName = new_family.encode("ascii", errors="replace")
+                    if new_style.lower() != "regular":
+                        top.Weight = new_style.encode("ascii", errors="replace")
+                    else:
+                        top.Weight = b"Regular"
+            except Exception:
+                pass  # CFF update is best-effort
 
         font.save(filepath)
         return True

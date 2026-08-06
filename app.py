@@ -137,7 +137,12 @@ def _process_single_file(file_storage):
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
-                        if rewrite_font_names(tmp_path, base, weight):
+                        if fmt == "otf":
+                            # Don't modify CFF font files — font.save() corrupts
+                            # CID-keyed CFF table data. Only update DB metadata.
+                            family_name = base
+                            style_name = weight
+                        elif rewrite_font_names(tmp_path, base, weight):
                             family_name = base
                             style_name = weight
                             meta = parse_font(tmp_path)
@@ -584,7 +589,13 @@ def scan_fonts_directory():
                             refined = detect_common_base_name(all_names)
                             if refined:
                                 base = refined
-                        if rewrite_font_names(fpath, base, weight):
+                        if fmt == "otf":
+                            # Don't modify CFF font files — font.save() corrupts
+                            # CID-keyed CFF table data. Only update DB metadata.
+                            family_name = base
+                            style_name = weight
+                            print("  🔧 修正命名(DB): {} -> {} - {}".format(fname, family_name, style_name))
+                        elif rewrite_font_names(fpath, base, weight):
                             family_name = base
                             style_name = weight
                             meta = parse_font(fpath)
@@ -628,10 +639,19 @@ def scan_fonts_directory():
                     print("  ⚠️  跳过重复文件: {} (已有更完整的版本)".format(fname))
                     continue
 
+        # Determine if family needs subdirectory storage
+        family_fonts = db.get_fonts_by_family(family_name)
+        use_subdir = len(family_fonts) > 0
+
         # Generate the correct filename
         ext_no_dot = ext.lstrip(".")
         new_filename = generate_filename(family_name, style_name, ext_no_dot)
-        new_path = os.path.join(FONT_STORAGE, new_filename)
+        if use_subdir:
+            family_dir = os.path.join(FONT_STORAGE, _sanitize_dirname(family_name))
+            os.makedirs(family_dir, exist_ok=True)
+            new_path = os.path.join(family_dir, new_filename)
+        else:
+            new_path = os.path.join(FONT_STORAGE, new_filename)
 
         # Rename if needed (avoid overwriting)
         if fpath != new_path:
