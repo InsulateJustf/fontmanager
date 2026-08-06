@@ -2,7 +2,7 @@
 
 ## Summary
 
-企业内部字体管理 Web 工具。Python + Flask + SQLite + fontTools 单体应用，设计师通过浏览器上传字体文件，系统自动解析元数据、去重、重命名并入库。支持 TTF/OTF/TTC，含 CJK 检测、字体预览、家族分组、打包下载等功能。部署目标为 Windows Server，同时支持 macOS 本地开发。
+企业内部字体管理 Web 工具。Python + Flask + SQLite + fontTools 单体应用，设计师通过浏览器上传字体文件，系统自动解析元数据、去重、重命名并入库。支持 TTF/OTF/TTC，含 CJK 检测、字体预览、家族分组、多选下载等功能。部署目标为 Windows Server，同时支持 macOS 本地开发。
 
 ## Architecture
 
@@ -18,6 +18,7 @@
                        ├── DELETE /api/fonts/<id>            → 删除字体（二次确认）
                        ├── GET  /api/fonts/download-all      → 打包下载全部 ZIP
                        ├── GET  /api/fonts/download-family   → 按家族下载 ZIP
+                       ├── POST /api/fonts/download-selected → 多选下载 ZIP
                        │
                        ├── SQLite (fontmanager.db)           → 元数据 + 缓存
                        └── FONT_STORAGE 目录                  → 实际字体文件
@@ -27,8 +28,8 @@
 
 ```
 fontmanager/
-├── app.py                   # Flask 路由 + Waitress 服务 + 启动扫描
-├── font_parser.py           # fontTools 解析、CJK 检测、名称清洗、Windows 字体过滤
+├── app.py                   # Flask 路由 + Waitress 服务 + 启动扫描 + 子目录迁移
+├── font_parser.py           # fontTools 解析、CJK 检测、名称清洗、Windows 字体过滤、cmap 指纹
 ├── db.py                    # SQLite CRUD + 自动迁移
 ├── requirements.txt         # flask, fonttools, waitress
 ├── start.sh                 # macOS 开发脚本 (支持 -s/-p 参数，自动构建前端)
@@ -42,7 +43,7 @@ fontmanager/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Sidebar.tsx      # 侧边栏：上传区 + 标签 + 统计 + 打包下载
-│   │   │   ├── FontTable.tsx    # 字体表格：家族分组、搜索、筛选、分页
+│   │   │   ├── FontTable.tsx    # 字体表格：家族分组、多选、搜索、筛选、分页
 │   │   │   ├── FontPreview.tsx  # 右侧滑出预览面板
 │   │   │   ├── UploadResults.tsx# 上传结果状态
 │   │   │   └── ui/              # shadcn/ui 组件库
@@ -55,6 +56,10 @@ fontmanager/
 │   └── vite.config.ts
 ├── static/                  # Vite 构建输出（Flask 直接服务）
 └── fonts/                   # 默认字体存储目录 (gitignore)
+    ├── 单字体文件.ttf        # 单字重家族：扁平存储
+    └── 多字重家族/           # 多字重家族：按家族名归入子目录
+        ├── Family-Bold.otf
+        └── Family-Light.otf
 ```
 
 ## 核心实现
@@ -71,10 +76,11 @@ fontmanager/
   - 括号内容（如 `(需授权)`）
   - 字重编号（W1-W9）
   - 区域后缀（SC/TC/HK/JP/KR/CN）
-  - 英文字重词（Light/Bold/Black/DemiLight 等，按长度优先匹配）
+  - 英文字重词（Light/Bold/Black/DemiLight/SemiLight 等，按长度优先匹配）
   - 多字中文字重词（粗体/特粗/纤细 等）
   - 描述词（Demo/Trial/Free/简入繁出 等）
   - **注意**: 不剥离单字中文字重词（"黑"/"细"/"粗"等），避免误伤字体名（如"华文细黑"、"微软雅黑"）
+  - **注意**: 清洗后同时去除尾部连字符和空格（`strip(" -_")`）
 - **文件名生成**: `generate_filename()` → `{FamilyName}-{StyleName}.{ext}`，非法字符替换为 `_`
 - **Windows 系统字体过滤**: `is_windows_builtin()` 匹配 100+ 个内置字体名（含"微软雅黑"、"宋体"、"等线"/DengXian 等）
 
@@ -100,7 +106,17 @@ fontmanager/
 - **TTC 优化**: cmap 只检查第一个子字体（共享字形），name table 采样最多 5 个子字体
 - **警告**: 当检测到日文字形但无简/繁中文字形时，提示"该子字体使用日本字形，中文显示可能不规范"
 
-### 4. 数据库 (db.py)
+### 4. cmap 指纹与名称修正 (font_parser.py)
+
+- `compute_cmap_fingerprint(filepath)` — 对 TTF/OTF 计算 cmap 指纹（hash + 字形数 + 版本号）
+- `get_raw_family_name(filepath)` — 获取清洗前的原始 family_name
+- `is_non_standard_naming(family, style)` — 检测"字重藏在 family 名、style=Regular"的非标准命名
+- `extract_weight_from_name(name)` — 从 family 名提取字重词和基名
+- `detect_common_base_name(names)` — 从多个 family 名提取公共基名
+- **用途**: 上传时自动检测非标准命名（如 HomuraM 系列），从 raw name 提取正确的 base + weight，更新数据库元数据
+- **仅修改 DB 元数据**，不修改字体文件本身（避免 fontTools 保存 CFF 字体时丢失数据）
+
+### 5. 数据库 (db.py)
 
 SQLite 表 `fonts`:
 
@@ -112,50 +128,72 @@ SQLite 表 `fonts`:
 | format | TEXT | ttf/otf/ttc |
 | file_size | INTEGER | 文件大小 (bytes) |
 | file_hash | TEXT | SHA256 |
-| stored_filename | TEXT | 服务器存储文件名 (重命名后) |
+| stored_filename | TEXT | 服务器存储文件名（含子目录路径，如 `FamilyName/file.otf`） |
 | original_filename | TEXT | 上传时原始文件名 |
 | cjk_info | TEXT (JSON) | CJK 支持信息缓存 |
 | subfonts_info | TEXT (JSON) | TTC 子字体列表缓存 |
+| cmap_fingerprint | TEXT (JSON) | cmap 指纹缓存（hash + glyph_count + version） |
 | created_at | TIMESTAMP | 入库时间 |
 
 - UNIQUE 约束: `(family_name, style_name)`
-- `init_db()` 自动迁移：检测并添加缺失的 `cjk_info`/`subfonts_info` 列
+- `init_db()` 自动迁移：检测并添加缺失的列
 - `get_all_fonts()` 自动恢复：表不存在时重建
 - `get_fonts_by_family(family_name)` 按家族名查询所有字重
+- `get_fonts_by_fingerprint(hash)` 按 cmap 指纹查询同源字体
 
-### 5. 上传流程 (app.py → POST /api/upload)
+### 6. 存储策略 (app.py)
+
+字体文件按家族名组织存储：
+
+```
+fonts/
+├── 华文细黑-Regular.ttf          # 单字重家族：扁平存储
+├── 方正新秀丽繁体-Regular.ttf     # 单字重家族：扁平存储
+├── HomuraM/                      # 多字重家族：按家族名归入子目录
+│   ├── HomuraM-ExtraLight.otf
+│   └── HomuraM-Light.otf
+└── Trajan Pro/
+    ├── Trajan Pro-Bold.otf
+    └── Trajan Pro-Regular.ttf
+```
+
+- 上传时检查 DB 中是否已有同家族字体
+- 有 → 创建子目录，新文件存入子目录，已有扁平文件也移入子目录（`_consolidate_family()`）
+- 没有 → 扁平存储
+- 启动时自动迁移：对 2+ 字体的家族执行子目录归入（`migrate_flat_to_subdirs()`）
+
+### 7. 上传流程 (app.py → POST /api/upload)
 
 ```
 接收 multipart files → 逐个处理:
   1. detect_format() 检查扩展名
   2. 写入临时文件
   3. parse_font() 解析元数据
-  4. is_windows_builtin() → 跳过系统字体 (status: "skipped")
-  5. get_font_by_family_style() 查重
+  4. cmap 指纹检测 + 非标准命名修正（TTF/OTF）
+  5. is_windows_builtin() → 跳过系统字体 (status: "skipped")
+  6. get_font_by_family_style() 查重
      - 已存在且旧的更完整 → 跳过 (status: "duplicate")
      - 已存在且新的更完整 → 删除旧文件+记录，继续入库
-  6. generate_filename() 重命名，冲突时加 _1/_2 后缀
-  7. shutil.move() 移动到 FONT_STORAGE
+  7. generate_filename() + 按家族名存储（扁平或子目录）
   8. 计算 SHA256 + CJK 检测 + TTC 子字体解析
-  9. insert_font() 写入数据库
+  9. insert_font() 写入数据库（含 cmap_fingerprint）
 ```
 
-- **完整性比较**: `_is_more_complete()` 先按格式优先级 (TTC=3 > OTF=2 > TTF=1)，同格式比文件大小
+### 8. 启动扫描 (app.py → scan_fonts_directory())
 
-### 6. 启动扫描 (app.py → scan_fonts_directory())
-
-服务启动时自动扫描 FONT_STORAGE 目录：
+服务启动时自动扫描 FONT_STORAGE 目录（含子目录）：
 
 ```
-遍历目录中所有 .ttf/.otf/.ttc 文件:
+遍历目录中所有 .ttf/.otf/.ttc 文件（含子目录）:
   - 已在数据库中 (按 stored_filename 匹配) → 跳过
   - parse_font() 解析 → is_windows_builtin() 过滤系统字体
+  - cmap 指纹检测 + 非标准命名修正
   - 已有同 family+style 记录 → 比较完整性，保留更完整的
-  - 生成规范文件名 → 必要时重命名
+  - 生成规范文件名 → 按家族名存储
   - 计算元数据 → insert_font() 入库
 ```
 
-### 7. API 端点
+### 9. API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -168,15 +206,17 @@ SQLite 表 `fonts`:
 | DELETE | `/api/fonts/<id>` | 删除字体 (文件+记录) |
 | GET | `/api/fonts/download-all` | 打包所有字体为 ZIP 下载 |
 | GET | `/api/fonts/download-family` | 按家族名打包 ZIP；`?name=<family_name>` |
+| POST | `/api/fonts/download-selected` | 多选下载 ZIP；body: `{ids: number[]}` |
 
-### 8. 前端 (frontend/)
+### 10. 前端 (frontend/)
 
 前端使用 React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui 构建。
 
 - **侧边栏 (Sidebar.tsx)**: 拖拽上传区（支持递归读取嵌套文件夹）、文件/文件夹选择按钮、标签管理、统计信息、打包下载按钮
 - **字体表格 (FontTable.tsx)**:
   - 按 `family_name` 家族分组显示，多字重家族显示为可展开/收起的分组
-  - 家族标题行显示：家族名、字重数量、CJK 徽章、格式、总大小
+  - 每行左侧复选框，支持多选；表头全选（三态）；家族标题行一键选中整个家族
+  - 选中后底部操作栏：显示选中数量 + 取消选择 + 下载选中按钮
   - 家族标题行带 📦 按钮，一键下载同家族全部字重 ZIP
   - 搜索框、格式/语言筛选、列排序、分页（每页 50 个家族）
   - 操作按钮：预览、下载、删除（二次确认）
@@ -189,7 +229,7 @@ SQLite 表 `fonts`:
 - **上传结果 (UploadResults.tsx)**: 逐条显示状态图标（✅成功 / ⚠️重复 / ⏭️跳过系统字体 / ❌失败）
 - **响应式**: 640px 以下隐藏格式/大小列
 
-### 9. 部署方式
+### 11. 部署方式
 
 **方式一: Python 环境**
 - Windows: 双击 `start.bat`（自动创建 venv、安装依赖）
@@ -206,7 +246,7 @@ SQLite 表 `fonts`:
 - `build.yml`: push/PR 到 main 分支或 tag `v*` 时自动触发，产物保留 90 天，tag 推送时自动创建 Release
 - `build-test.yml`: 仅 `workflow_dispatch` 手动触发，checkout test 分支，产物保留 30 天
 
-### 10. 开发约定
+### 12. 开发约定
 
 - **Python 版本**: 3.9+（使用 `typing.Optional`、`typing.List` 等旧式类型注解）
 - **前端技术**: React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui
@@ -220,7 +260,7 @@ SQLite 表 `fonts`:
 - **推送流程**: 任何 git push 操作都必须由用户明确批准后执行，禁止自动推送
 - **测试流程**: 每次实现新功能或修复 Bug 后，向用户报告改动内容，等待用户手动测试并确认无误后，由用户发起提交和推送要求
 
-### 11. 关键设计决策
+### 13. 关键设计决策
 
 | 决策 | 说明 |
 |------|------|
@@ -232,5 +272,7 @@ SQLite 表 `fonts`:
 | 启动时自动扫描目录 | 支持手动放入字体文件后重启即入库 |
 | Windows 系统字体自动跳过 | 避免与系统自带字体冲突 |
 | 不合并同家族字体为 TTC | 原始文件保持不变，通过前端分组+批量下载实现等效功能 |
+| 不修改字体文件本身 | fontTools 保存 CFF 字体会丢失数据，仅更新 DB 元数据 |
 | 删除操作二次确认 | 两次 confirm 防止误删 |
 | 名称清洗不剥离单字中文权重 | 避免"华文细黑"→"华文"、"微软雅黑"→"微软雅"等误伤 |
+| 多字重家族用子目录存储 | 单字体扁平、多字体归入 `fonts/FamilyName/`，保持目录整洁 |
