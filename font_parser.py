@@ -213,21 +213,32 @@ def _clean_family_name(name: str) -> str:
     return result
 
 
+_VARIANT_MARKERS = [" Mono", "Mono "]
+
+
+def _strip_variant(name: str) -> str:
+    """Strip variant markers like 'Mono' from family name for comparison."""
+    result = name
+    for marker in _VARIANT_MARKERS:
+        result = result.replace(marker, " ")
+    return re.sub(r'\s+', ' ', result).strip()
+
+
 def _find_common_ttc_name(all_names: List[Tuple[str, str]]) -> Optional[str]:
     if not all_names:
         return None
     cn_names = [n for n, lang in all_names if lang == 'zh']
     en_names = [n for n, lang in all_names if lang == 'en']
     if cn_names:
-        cn_bases = list(set(_clean_family_name(n) for n in cn_names))
+        cn_bases = list(set(_strip_variant(_clean_family_name(n)) for n in cn_names))
         for b in cn_bases:
             if _is_simplified_chinese(b):
                 return b
         return cn_bases[0]
     if en_names:
-        en_bases = [_clean_family_name(n) for n in en_names]
+        en_bases = [_strip_variant(_clean_family_name(n)) for n in en_names]
         return Counter(en_bases).most_common(1)[0][0]
-    all_bases = [_clean_family_name(n) for n, _ in all_names]
+    all_bases = [_strip_variant(_clean_family_name(n)) for n, _ in all_names]
     return Counter(all_bases).most_common(1)[0][0] if all_bases else None
 
 
