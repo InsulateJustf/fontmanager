@@ -612,6 +612,28 @@ def download_selected_fonts():
     )
 
 
+@app.route("/api/version", methods=["GET"])
+def get_version():
+    """Get current version info (git branch and commit)."""
+    import subprocess
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        if branch == "main":
+            version = f"v{commit}"
+        else:
+            version = f"{branch}-{commit}"
+    except Exception:
+        version = "unknown"
+    return jsonify({"status": "ok", "version": version})
+
+
 @app.route("/api/tags", methods=["GET"])
 def list_tags():
     tags = db.get_all_tags()

@@ -14,7 +14,7 @@ import {
 
 import { Upload, FolderOpen, Tag, BarChart3, Package, X, Plus, Loader2 } from 'lucide-react'
 import type { Font, Tag as TagType, UploadResult } from '@/lib/api'
-import { uploadFiles, createTag, deleteTag, downloadAllFonts } from '@/lib/api'
+import { uploadFiles, createTag, deleteTag, downloadAllFonts, fetchVersion } from '@/lib/api'
 
 interface SidebarProps {
   fonts: Font[]
@@ -35,12 +35,18 @@ export function Sidebar({
 }: SidebarProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [version, setVersion] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [folderInputKey, setFolderInputKey] = useState(0)
   const [newTagName, setNewTagName] = useState('')
   const [showTagInput, setShowTagInput] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch version on mount
+  React.useEffect(() => {
+    fetchVersion().then(setVersion).catch(console.error)
+  }, [])
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -463,6 +469,14 @@ export function Sidebar({
             打包下载全部
           </Button>
         </div>
+        {/* Version */}
+        {version && (
+          <div className="px-4 pb-2 text-center">
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+              {version}
+            </span>
+          </div>
+        )}
       </aside>
 
       {/* Upload Progress Dialog */}
