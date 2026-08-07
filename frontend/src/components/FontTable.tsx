@@ -66,10 +66,10 @@ function InlinePreview({ fontId, fontFormat }: { fontId: number; fontFormat: str
 
   return (
     <span 
-      className="text-sm whitespace-nowrap overflow-hidden text-ellipsis"
+      className="text-lg whitespace-nowrap overflow-hidden text-ellipsis"
       style={{ fontFamily: loaded ? `'${faceName}', sans-serif` : 'inherit' }}
     >
-      字体预览
+      预览 Preview 123
     </span>
   )
 }
@@ -298,14 +298,14 @@ export function FontTable({
 
   const renderCJKBadges = (font: Font) => {
     const cjk = cjkInfoMap[font.id]
-    if (!cjk) return <Badge variant="outline">检测中...</Badge>
-    if (!cjk.has_cjk) return <Badge variant="secondary">英</Badge>
+    if (!cjk) return <Badge variant="outline" className="text-xs">...</Badge>
+    if (!cjk.has_cjk) return <Badge variant="secondary" className="text-xs">英</Badge>
+    const hasChinese = cjk.supports_sc || cjk.supports_tc
     return (
-      <div className="flex gap-1 flex-wrap justify-center">
-        {cjk.supports_sc && <Badge className="bg-green-100 text-green-800 hover:bg-green-200">简</Badge>}
-        {cjk.supports_tc && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">繁</Badge>}
-        {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200">日</Badge>}
-        {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">韩</Badge>}
+      <div className="grid grid-cols-2 gap-0.5 justify-items-center w-fit mx-auto">
+        {hasChinese && <Badge className="bg-green-100 text-green-800 hover:bg-green-200 text-xs px-1 py-0 h-5">中</Badge>}
+        {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 text-xs px-1 py-0 h-5">日</Badge>}
+        {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs px-1 py-0 h-5">韩</Badge>}
       </div>
     )
   }
@@ -514,7 +514,7 @@ export function FontTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10 text-center">
+              <TableHead className="w-8 text-center">
                 <button
                   className="inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors"
                   onClick={toggleSelectAll}
@@ -527,32 +527,32 @@ export function FontTable({
                   ) : null}
                 </button>
               </TableHead>
-              <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('family_name')}>
-                <div className="flex items-center justify-center gap-1">
+              <TableHead className="text-center">
+                <div className="flex items-center justify-center gap-1 cursor-pointer" onClick={() => toggleSort('family_name')}>
                   字体名称
-                  <ArrowUpDown className="h-4 w-4" />
+                  <ArrowUpDown className="h-3 w-3" />
                 </div>
               </TableHead>
               <TableHead className="text-center">预览</TableHead>
-              <TableHead className="text-center">标签</TableHead>
-              <TableHead className="text-center">语言支持</TableHead>
+              <TableHead className="w-20 text-center">标签</TableHead>
+              <TableHead className="w-14 text-center">语言</TableHead>
               {isAdmin && (
                 <>
-                  <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('format')}>
+                  <TableHead className="w-16 cursor-pointer text-center" onClick={() => toggleSort('format')}>
                     <div className="flex items-center justify-center gap-1">
                       格式
-                      <ArrowUpDown className="h-4 w-4" />
+                      <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
-                  <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('file_size')}>
+                  <TableHead className="w-20 cursor-pointer text-center" onClick={() => toggleSort('file_size')}>
                     <div className="flex items-center justify-center gap-1">
                       大小
-                      <ArrowUpDown className="h-4 w-4" />
+                      <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
                 </>
               )}
-              <TableHead className="text-center">操作</TableHead>
+              <TableHead className="w-16 text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -585,23 +585,12 @@ export function FontTable({
                             ) : null}
                           </button>
                         </TableCell>
-                        <TableCell className="font-medium text-center">
-                          <button
-                            className="inline-flex items-center gap-1 hover:text-[hsl(var(--primary))]"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setExpandedFamilies(prev => {
-                                const next = new Set(prev)
-                                if (next.has(group.family)) next.delete(group.family)
-                                else next.add(group.family)
-                                return next
-                              })
-                            }}
-                          >
-                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            {group.family}
-                            <Badge variant="secondary" className="ml-1">{group.fonts.length} 个字重</Badge>
-                          </button>
+                        <TableCell className="font-medium text-center w-[220px] max-w-[220px] overflow-hidden">
+                          <div className="flex items-center justify-center gap-1">
+                            {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setExpandedFamilies(prev => { const next = new Set(prev); if (next.has(group.family)) next.delete(group.family); else next.add(group.family); return next; }) }} /> : <ChevronRight className="h-4 w-4 shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setExpandedFamilies(prev => { const next = new Set(prev); if (next.has(group.family)) next.delete(group.family); else next.add(group.family); return next; }) }} />}
+                            <span className="truncate cursor-pointer hover:text-[hsl(var(--primary))]" onClick={() => onFontSelect(group.fonts[0])}>{group.family}</span>
+                            <Badge variant="secondary" className="ml-1 shrink-0">{group.fonts.length} 个字重</Badge>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
                           <InlinePreview fontId={group.fonts[0].id} fontFormat={group.fonts[0].format} />
@@ -649,8 +638,8 @@ export function FontTable({
                             {selectedIds.has(font.id) && <Check className="h-3 w-3" />}
                           </button>
                         </TableCell>
-                        <TableCell className={`font-medium text-center ${showHeader ? 'pl-8' : ''}`}>
-                          {!showHeader && font.family_name}
+                        <TableCell className={`font-medium text-center w-[220px] max-w-[220px] overflow-hidden ${showHeader ? 'pl-8' : ''}`}>
+                          {!showHeader && <span className="truncate block">{font.family_name}</span>}
                         </TableCell>
                         <TableCell className="text-center">
                           <InlinePreview fontId={font.id} fontFormat={font.format} />
