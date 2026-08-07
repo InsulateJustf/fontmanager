@@ -66,6 +66,9 @@ export function FontTable({
   const [showBatchTagSelect, setShowBatchTagSelect] = useState(false)
   const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove'>('add')
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
+  const [showDelete, setShowDelete] = useState(false)
+  const konamiRef = useRef<number[]>([])
+  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
   const batchTagRef = useRef<HTMLDivElement>(null)
 
 
@@ -229,6 +232,23 @@ export function FontTable({
       return next
     })
   }
+
+  // Konami code to show delete buttons
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      konamiRef.current.push(e.keyCode)
+      if (konamiRef.current.length > konamiCode.length) {
+        konamiRef.current.shift()
+      }
+      if (konamiRef.current.length === konamiCode.length && 
+          konamiRef.current.every((code, i) => code === konamiCode[i])) {
+        setShowDelete(true)
+        konamiRef.current = []
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Close batch tag dropdown when clicking outside
   useEffect(() => {
@@ -565,14 +585,16 @@ export function FontTable({
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => handleDelete(font)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {showDelete && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDelete(font)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
