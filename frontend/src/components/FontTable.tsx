@@ -639,7 +639,7 @@ export function FontTable({
                           </button>
                         </TableCell>
                         <TableCell className={`font-medium text-center w-[220px] max-w-[220px] overflow-hidden ${showHeader ? 'pl-8' : ''}`}>
-                          {!showHeader && <span className="truncate block">{font.family_name}</span>}
+                          {showHeader ? <span className="truncate block text-sm text-muted-foreground">{font.style_name}</span> : <span className="truncate block">{font.family_name}</span>}
                         </TableCell>
                         <TableCell className="text-center">
                           <InlinePreview fontId={font.id} fontFormat={font.format} />
