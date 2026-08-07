@@ -151,20 +151,32 @@ export function Sidebar({
     const allFiles: File[] = []
     
     if (items) {
+      console.log('Starting to process', items.length, 'items')
       for (let i = 0; i < items.length; i++) {
-        const entry = items[i].webkitGetAsEntry?.()
-        console.log(`item ${i}:`, entry?.name, entry?.isFile, entry?.isDirectory)
-        if (!entry) continue
-        if (entry.isFile) {
-          const file = await new Promise<File>((resolve, reject) =>
-            (entry as FileSystemFileEntry).file(resolve, reject)
-          )
-          allFiles.push(file)
-        } else if (entry.isDirectory) {
-          const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-          console.log(`directory ${entry.name}: found ${files.length} files`)
-          allFiles.push(...files)
+        console.log(`Processing item ${i} of ${items.length}`)
+        try {
+          const entry = items[i].webkitGetAsEntry?.()
+          console.log(`item ${i}:`, entry?.name, 'isFile:', entry?.isFile, 'isDirectory:', entry?.isDirectory)
+          if (!entry) {
+            console.log(`item ${i}: entry is null, skipping`)
+            continue
+          }
+          if (entry.isFile) {
+            const file = await new Promise<File>((resolve, reject) =>
+              (entry as FileSystemFileEntry).file(resolve, reject)
+            )
+            allFiles.push(file)
+            console.log(`item ${i}: added file`, file.name)
+          } else if (entry.isDirectory) {
+            console.log(`item ${i}: reading directory`, entry.name)
+            const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+            console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
+            allFiles.push(...files)
+          }
+        } catch (err) {
+          console.error(`item ${i}: error processing`, err)
         }
+        console.log(`Finished processing item ${i}`)
       }
     }
 
