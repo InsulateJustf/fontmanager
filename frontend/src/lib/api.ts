@@ -204,6 +204,13 @@ export async function batchRemoveTagFromFonts(fontIds: number[], tagId: number):
   if (data.status !== 'ok') throw new Error(data.message || 'Failed to remove tag from fonts')
 }
 
+export async function fetchVersion(): Promise<string> {
+  const res = await fetch(`${API_BASE}/version`)
+  const data = await res.json()
+  if (data.status !== 'ok') throw new Error(data.message || 'Failed to fetch version')
+  return data.version
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'

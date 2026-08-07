@@ -14,7 +14,7 @@ import {
 
 import { Upload, FolderOpen, Tag, BarChart3, Package, X, Plus, Loader2 } from 'lucide-react'
 import type { Font, Tag as TagType, UploadResult } from '@/lib/api'
-import { uploadFiles, createTag, deleteTag, downloadAllFonts } from '@/lib/api'
+import { uploadFiles, createTag, deleteTag, downloadAllFonts, fetchVersion } from '@/lib/api'
 
 interface SidebarProps {
   fonts: Font[]
@@ -35,10 +35,18 @@ export function Sidebar({
 }: SidebarProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [version, setVersion] = useState('')
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [folderInputKey, setFolderInputKey] = useState(0)
   const [newTagName, setNewTagName] = useState('')
   const [showTagInput, setShowTagInput] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch version on mount
+  React.useEffect(() => {
+    fetchVersion().then(setVersion).catch(console.error)
+  }, [])
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -54,85 +62,164 @@ export function Sidebar({
   const readDirectoryEntries = async (dirEntry: FileSystemDirectoryEntry): Promise<File[]> => {
     const reader = dirEntry.createReader()
     const allFiles: File[] = []
-    // readEntries() may return partial results; loop until empty
-    const readBatch = (): Promise<FileSystemEntry[]> =>
-      new Promise((resolve, reject) => reader.readEntries(resolve, reject))
-    let entries = await readBatch()
-    while (entries.length > 0) {
-      for (const entry of entries) {
-        if (entry.isFile) {
-          const file = await new Promise<File>((resolve, reject) =>
-            (entry as FileSystemFileEntry).file(resolve, reject)
+    
+    // readEntries() returns partial results in Chrome; must loop until empty
+    const readAllEntries = (): Promise<FileSystemEntry[]> => {
+      return new Promise((resolve) => {
+        const allEntries: FileSystemEntry[] = []
+        const readBatch = () => {
+          reader.readEntries(
+            (entries) => {
+              if (entries.length === 0) {
+                resolve(allEntries)
+              } else {
+                allEntries.push(...entries)
+                readBatch()
+              }
+            },
+            (err) => {
+              console.error('readEntries error:', err)
+              resolve(allEntries)
+            }
           )
-          allFiles.push(file)
-        } else if (entry.isDirectory) {
-          const subFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-          allFiles.push(...subFiles)
         }
-      }
-      entries = await readBatch()
+        readBatch()
+      })
     }
+    
+    const entries = await readAllEntries()
+    console.log(`readDirectoryEntries: ${dirEntry.name} has ${entries.length} entries`)
+    
+    for (const entry of entries) {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject)
+        )
+        allFiles.push(file)
+      } else if (entry.isDirectory) {
+        const subFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+        allFiles.push(...subFiles)
+      }
+    }
+    console.log(`readDirectoryEntries: ${dirEntry.name} found ${allFiles.length} files total`)
     return allFiles
+  }
+
+  const filterFontFiles = (files: File[] | FileList): File[] => {
+    const fontExts = ['.ttf', '.otf', '.ttc']
+    const result: File[] = []
+    const arr = Array.from(files)
+    for (const file of arr) {
+      if (fontExts.some(ext => file.name.toLowerCase().endsWith(ext))) {
+        result.push(file)
+      }
+    }
+    return result
+  }
+
+  // Called after files are added to pending, ask if user wants to select more
+  const handleFolderSelectComplete = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const fontFiles = filterFontFiles(files)
+    if (fontFiles.length === 0) {
+      alert('未找到字体文件（TTF/OTF/TTC）')
+      return
+    }
+    const newPendingCount = pendingFiles.length + fontFiles.length
+    setPendingFiles(prev => [...prev, ...fontFiles])
+    setFolderInputKey(prev => prev + 1)
+    
+    // Ask if user wants to select more folders
+    const continueSelect = confirm(`已选择 ${newPendingCount} 个字体文件。
+
+是否继续选择更多文件夹？`)
+    if (continueSelect) {
+      // Open folder dialog again after a small delay
+      setTimeout(() => folderInputRef.current?.click(), 100)
+    }
+  }
+
+  const handlePendingUpload = async () => {
+    if (pendingFiles.length === 0) return
+    setIsUploading(true)
+    try {
+      const dt = new DataTransfer()
+      pendingFiles.forEach(f => dt.items.add(f))
+      const results = await uploadFiles(dt.files)
+      onUploadComplete(results)
+      setPendingFiles([])
+    } catch (err) {
+      console.error('Upload failed:', err)
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
 
-    // Check if any dropped items are directories
+    console.log('handleDrop called')
     const items = e.dataTransfer.items
-    const hasDirectories = items && Array.from(items).some(
-      (item) => item.webkitGetAsEntry?.()?.isDirectory
-    )
+    console.log('items length:', items?.length)
 
-    if (hasDirectories) {
-      // Use webkitGetAsEntry to recursively read directories
-      const allFiles: File[] = []
-      for (let i = 0; i < items!.length; i++) {
-        const entry = items![i].webkitGetAsEntry?.()
-        if (!entry) continue
-        if (entry.isFile) {
-          const file = await new Promise<File>((resolve, reject) =>
-            (entry as FileSystemFileEntry).file(resolve, reject)
-          )
-          allFiles.push(file)
-        } else if (entry.isDirectory) {
-          const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-          allFiles.push(...files)
+    // Collect all files from dropped items (files and directories)
+    const allFiles: File[] = []
+    
+    if (items) {
+      // Convert DataTransferItemList to array to avoid issues with async iteration
+      const itemsArray = Array.from(items)
+      console.log('Starting to process', itemsArray.length, 'items')
+      for (let i = 0; i < itemsArray.length; i++) {
+        console.log(`Processing item ${i} of ${itemsArray.length}`)
+        try {
+          const entry = itemsArray[i].webkitGetAsEntry?.()
+          console.log(`item ${i}:`, entry?.name, 'isFile:', entry?.isFile, 'isDirectory:', entry?.isDirectory)
+          if (!entry) {
+            console.log(`item ${i}: entry is null, skipping`)
+            continue
+          }
+          if (entry.isFile) {
+            const file = await new Promise<File>((resolve, reject) =>
+              (entry as FileSystemFileEntry).file(resolve, reject)
+            )
+            allFiles.push(file)
+            console.log(`item ${i}: added file`, file.name)
+          } else if (entry.isDirectory) {
+            console.log(`item ${i}: reading directory`, entry.name)
+            const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+            console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
+            allFiles.push(...files)
+          }
+        } catch (err) {
+          console.error(`item ${i}: error processing`, err)
         }
+        console.log(`Finished processing item ${i}`)
       }
-      if (allFiles.length > 0) {
-        const dt = new DataTransfer()
-        allFiles.forEach(f => dt.items.add(f))
-        await handleUpload(dt.files)
+    }
+
+    // Fallback: if no files collected from entries, use dataTransfer.files
+    if (allFiles.length === 0 && e.dataTransfer.files.length > 0) {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        allFiles.push(e.dataTransfer.files[i])
       }
-    } else {
-      // Simple case: individual files — use dataTransfer.files directly
-      if (e.dataTransfer.files.length > 0) {
-        await handleUpload(e.dataTransfer.files)
-      }
+    }
+
+    console.log('total files collected:', allFiles.length)
+    if (allFiles.length > 0) {
+      await handleUpload(allFiles)
     }
   }
 
-  const handleUpload = async (files: FileList | File[]) => {
+  const handleUpload = async (files: FileList | File[] | File[]) => {
     setIsUploading(true)
     try {
-      // Filter font files (including from nested folders)
-      const fontExts = ['.ttf', '.otf', '.ttc']
-      const fontFiles: File[] = []
-      const fileArray = Array.from(files)
-      for (let i = 0; i < fileArray.length; i++) {
-        const file = fileArray[i]
-        const name = file.name.toLowerCase()
-        if (fontExts.some(ext => name.endsWith(ext))) {
-          fontFiles.push(file)
-        }
-      }
+      const fontFiles = filterFontFiles(files)
+      console.log('handleUpload: filtered', fontFiles.length, 'font files')
       if (fontFiles.length === 0) {
         alert('未找到字体文件（TTF/OTF/TTC）')
         return
       }
-      // Create a DataTransfer to build a FileList
       const dt = new DataTransfer()
       fontFiles.forEach(f => dt.items.add(f))
       const results = await uploadFiles(dt.files)
@@ -228,15 +315,59 @@ export function Sidebar({
             onChange={(e) => e.target.files && handleUpload(e.target.files)}
           />
           <input
+            key={folderInputKey}
             ref={folderInputRef}
             type="file"
             // @ts-ignore
             webkitdirectory=""
             multiple
             className="hidden"
-            onChange={(e) => e.target.files && handleUpload(e.target.files)}
+            onChange={(e) => handleFolderSelectComplete(e.target.files)}
           />
         </div>
+
+        {pendingFiles.length > 0 && (
+          <div className="px-4 pb-2">
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm">
+              <p className="text-blue-800 mb-2">
+                已选择 {pendingFiles.length} 个字体文件
+              </p>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={handlePendingUpload}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-1" />
+                  )}
+                  上传
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setPendingFiles([])}
+                  disabled={isUploading}
+                >
+                  清空
+                </Button>
+              </div>
+              <Button 
+                size="sm" 
+                variant="ghost"
+                className="w-full mt-2"
+                onClick={() => folderInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                <FolderOpen className="h-4 w-4 mr-1" />
+                继续选择文件夹
+              </Button>
+            </div>
+          </div>
+        )}
 
         <Separator />
 
@@ -338,6 +469,14 @@ export function Sidebar({
             打包下载全部
           </Button>
         </div>
+        {/* Version */}
+        {version && (
+          <div className="px-4 pb-2 text-center">
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+              {version}
+            </span>
+          </div>
+        )}
       </aside>
 
       {/* Upload Progress Dialog */}

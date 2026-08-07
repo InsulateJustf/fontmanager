@@ -66,6 +66,9 @@ export function FontTable({
   const [showBatchTagSelect, setShowBatchTagSelect] = useState(false)
   const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove'>('add')
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
+  const [showDelete, setShowDelete] = useState(false)
+  const konamiRef = useRef<number[]>([])
+  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
   const batchTagRef = useRef<HTMLDivElement>(null)
 
 
@@ -230,6 +233,23 @@ export function FontTable({
     })
   }
 
+  // Konami code to show delete buttons
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      konamiRef.current.push(e.keyCode)
+      if (konamiRef.current.length > konamiCode.length) {
+        konamiRef.current.shift()
+      }
+      if (konamiRef.current.length === konamiCode.length && 
+          konamiRef.current.every((code, i) => code === konamiCode[i])) {
+        setShowDelete(true)
+        konamiRef.current = []
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // Close batch tag dropdown when clicking outside
   useEffect(() => {
     if (!showBatchTagSelect) return
@@ -263,18 +283,14 @@ export function FontTable({
   const renderCJKBadges = (font: Font) => {
     const cjk = cjkInfoMap[font.id]
     if (!cjk) return <Badge variant="outline">检测中...</Badge>
-    if (!cjk.has_cjk) return <Badge variant="secondary">无中文</Badge>
+    if (!cjk.has_cjk) return <Badge variant="secondary">英</Badge>
     return (
       <div className="flex gap-1 flex-wrap justify-center">
         {cjk.supports_sc && <Badge className="bg-green-100 text-green-800 hover:bg-green-200">简</Badge>}
         {cjk.supports_tc && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">繁</Badge>}
         {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200">日</Badge>}
         {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">韩</Badge>}
-        {cjk.warning && (
-          <Badge variant="destructive" className="text-xs">
-            ⚠️ {cjk.warning}
-          </Badge>
-        )}
+
       </div>
     )
   }
@@ -399,7 +415,7 @@ export function FontTable({
             <SelectItem value="tc">繁体中文</SelectItem>
             <SelectItem value="ja">日文</SelectItem>
             <SelectItem value="ko">韩文</SelectItem>
-            <SelectItem value="none">无中文</SelectItem>
+            <SelectItem value="none">英</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -435,7 +451,7 @@ export function FontTable({
                 </div>
               </TableHead>
               <TableHead className="text-center">标签</TableHead>
-              <TableHead className="text-center">中文支持</TableHead>
+              <TableHead className="text-center">语言支持</TableHead>
               <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('format')}>
                 <div className="flex items-center justify-center gap-1">
                   格式
@@ -569,14 +585,16 @@ export function FontTable({
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => handleDelete(font)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {showDelete && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDelete(font)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

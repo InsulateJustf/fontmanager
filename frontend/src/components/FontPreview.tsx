@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -108,6 +108,25 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
   }, [font, open, selectedSubfont])
 
   const [showRestore, setShowRestore] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const konamiRef = useRef<number[]>([])
+  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      konamiRef.current.push(e.keyCode)
+      if (konamiRef.current.length > konamiCode.length) {
+        konamiRef.current.shift()
+      }
+      if (konamiRef.current.length === konamiCode.length && 
+          konamiRef.current.every((code, i) => code === konamiCode[i])) {
+        setShowDelete(true)
+        konamiRef.current = []
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
   
   const handleRestore = async () => {
     if (!font) return
@@ -154,12 +173,12 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
   })
 
   return (
-    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] flex flex-col">
-        <SheetHeader>
-          <SheetTitle>{font.family_name}</SheetTitle>
-          <SheetDescription>{font.style_name} · {font.format.toUpperCase()} · {formatFileSize(font.file_size)}</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{font.family_name}</DialogTitle>
+          <DialogDescription>{font.style_name} · {font.format.toUpperCase()} · {formatFileSize(font.file_size)}</DialogDescription>
+        </DialogHeader>
 
         <div className="flex-1 overflow-auto py-4 space-y-4">
           {/* Subfont Selector */}
@@ -264,10 +283,12 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
               下载
             </a>
           </Button>
-          <Button variant="destructive" className="flex-1" onClick={handleDelete}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            删除
-          </Button>
+          {showDelete && (
+            <Button variant="destructive" className="flex-1" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              删除
+            </Button>
+          )}
         </div>
         
         {/* Hidden restore button - double-click title to reveal */}
@@ -289,7 +310,7 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
             </Button>
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

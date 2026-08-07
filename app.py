@@ -46,6 +46,28 @@ def _sanitize_dirname(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
 
+
+def _is_covered_by_ttc(family_name: str, style_name: str) -> bool:
+    """Check if a TTF/OTF font is already covered by an existing TTC in the database.
+    
+    Returns True if there is a TTC with the same family_name that has a subfont
+    with a matching weight/style.
+    """
+    ttc_fonts = db.get_fonts_by_family(family_name)
+    for ttc in ttc_fonts:
+        if ttc["format"] != "ttc":
+            continue
+        subfonts_info = ttc.get("subfonts_info")
+        if not subfonts_info:
+            continue
+        subfonts = json.loads(subfonts_info) if isinstance(subfonts_info, str) else subfonts_info
+        for sf in subfonts:
+            sf_weight = sf.get("weight", "")
+            sf_style = sf.get("style_name", "")
+            if sf_weight == style_name or sf_style == style_name:
+                return True
+    return False
+
 def _get_backup_dir():
     """Get or create the backup directory."""
     backup_dir = os.path.join(FONT_STORAGE, "backup")
@@ -132,8 +154,23 @@ def upload_font():
     if "files" not in request.files:
         return jsonify({"status": "error", "message": "No files provided"}), 400
     files = request.files.getlist("files")
+    
+    # Sort files by format priority: TTC > OTF > TTF
+    # This ensures TTC files are processed first, so OTF/TTF files can be checked against them
+    def _format_priority(filename):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == '.ttc':
+            return 0
+        elif ext == '.otf':
+            return 1
+        elif ext == '.ttf':
+            return 2
+        return 3
+    
+    files_sorted = sorted(files, key=lambda f: _format_priority(f.filename) if f.filename else 999)
+    
     results = []
-    for f in files:
+    for f in files_sorted:
         if not f.filename:
             results.append({"filename": "(empty)", "status": "error", "message": "Empty filename"})
             continue
@@ -227,6 +264,14 @@ def _process_single_file(file_storage):
                     "message": "Windows 系统自带字体，已跳过",
                     "family_name": family_name, "style_name": style_name}
 
+        # Skip TTF/OTF if already covered by an existing TTC
+        if fmt in ("ttf", "otf") and _is_covered_by_ttc(family_name, style_name):
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            return {"filename": original_name, "status": "skipped",
+                    "message": "该字重已包含在 TTC 文件中，已跳过",
+                    "family_name": family_name, "style_name": style_name}
+
         new_file_size = os.path.getsize(tmp_path)
 
         # Check for existing font with same family+style
@@ -235,9 +280,12 @@ def _process_single_file(file_storage):
         if existing:
             # Compare completeness
             if _is_more_complete(fmt, new_file_size, existing["format"], existing["file_size"]):
-                # New font is more complete — replace old one
+                # New font is more complete — backup old one and replace
                 old_path = os.path.join(FONT_STORAGE, existing["stored_filename"])
                 if os.path.exists(old_path):
+                    backup_path = _backup_font(old_path, existing["original_filename"])
+                    if backup_path:
+                        print(f"  📦 备份原字体: {existing['original_filename']} -> {backup_path}")
                     os.remove(old_path)
                 db.delete_font(existing["id"])
             else:
@@ -564,6 +612,28 @@ def download_selected_fonts():
     )
 
 
+@app.route("/api/version", methods=["GET"])
+def get_version():
+    """Get current version info (git branch and commit)."""
+    import subprocess
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        if branch == "main":
+            version = f"v{commit}"
+        else:
+            version = f"{branch}-{commit}"
+    except Exception:
+        version = "unknown"
+    return jsonify({"status": "ok", "version": version})
+
+
 @app.route("/api/tags", methods=["GET"])
 def list_tags():
     tags = db.get_all_tags()
@@ -769,6 +839,11 @@ def scan_fonts_directory():
         # Skip Windows built-in fonts
         if is_windows_builtin(family_name):
             print("  ⚠️  跳过 Windows 系统字体: {} ({})".format(family_name, fname))
+            continue
+
+        # Skip TTF/OTF if already covered by an existing TTC
+        if fmt in ("ttf", "otf") and _is_covered_by_ttc(family_name, style_name):
+            print("  ⚠️  跳过已包含在 TTC 中的字重: {} {} ({})".format(family_name, style_name, fname))
             continue
 
         # Check if this family+style already exists in DB
