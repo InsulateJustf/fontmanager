@@ -37,6 +37,7 @@ fontmanager/
 ├── start.bat                # Windows 一键启动
 ├── build.bat                # Windows PyInstaller 打包
 ├── fontmanager.spec         # PyInstaller 配置
+├── VERSION                  # 版本号文件（构建时生成，打包到 exe 中）
 ├── .github/workflows/
 │   ├── build.yml            # GitHub Actions main 分支自动编译 exe
 │   └── build-test.yml       # GitHub Actions test 分支手动编译 exe
@@ -270,6 +271,7 @@ fonts/
 **方式二: 单文件 exe**
 - 运行 `build.bat` 或 GitHub Actions 自动构建
 - 输出 `dist/FontManager.exe`，无需 Python 环境
+- 内含 VERSION 文件，显示正确的版本号
 - 可用 NSSM 注册为 Windows 服务
 
 **GitHub Actions**:
@@ -314,4 +316,4 @@ fonts/
 | HW 后缀剥离 | 名称清洗时剥离 HW（半宽）后缀 |
 | 名称清洗不剥离单字中文权重 | 避免"华文细黑"→"华文"、"微软雅黑"→"微软雅"等误伤 |
 | 多字重家族用子目录存储 | 单字体扁平、多字体归入 `fonts/FamilyName/`，保持目录整洁 |
-| 版本号显示 | 侧边栏底部显示当前版本（主分支: commit id，测试分支: test-commit id） |
+| 版本号显示 | 侧边栏底部显示当前版本，优先从 VERSION 文件读取，其次从 git 获取 |

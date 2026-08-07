@@ -29,7 +29,7 @@
 - **非标准命名修正** — 自动检测字重藏在 family 名中的字体（如 HomuraM 系列），修正元数据
 - **字体备份与还原** — 修改字体前自动备份原文件到 `fonts/backup/`，替换时也自动备份，支持手动还原到原始版本
 - **字形安全比对** — 修改字体后自动比对字形数据，确保无损坏，异常时自动还原
-- **版本号显示** — 侧边栏底部显示当前版本号（主分支显示 commit id，测试分支显示 test-commit id）
+- **版本号显示** — 侧边栏底部显示当前版本号（构建版本从 VERSION 文件读取，开发版本从 git 获取）
 
 ## 技术栈
 
@@ -180,6 +180,7 @@ fontmanager/
 ├── start.bat               # Windows 一键启动
 ├── build.bat               # Windows PyInstaller 打包
 ├── fontmanager.spec        # PyInstaller 配置
+├── VERSION                 # 版本号文件（构建时自动生成）
 ├── .github/workflows/
 │   ├── build.yml           # GitHub Actions main 分支自动编译 exe
 │   └── build-test.yml      # GitHub Actions test 分支手动编译 exe
