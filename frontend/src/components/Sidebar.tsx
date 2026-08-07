@@ -167,14 +167,17 @@ export function Sidebar({
     const allFiles: File[] = []
     
     if (items) {
-      // Convert DataTransferItemList to array to avoid issues with async iteration
-      const itemsArray = Array.from(items)
-      console.log('Starting to process', itemsArray.length, 'items')
-      console.log('Items types:', itemsArray.map(item => item.kind).join(', '))
+      const len = items.length
+      console.log('Starting to process', len, 'items')
       
-      for (let i = 0; i < itemsArray.length; i++) {
-        const item = itemsArray[i]
-        console.log(`Processing item ${i} of ${itemsArray.length}, kind: ${item.kind}, type: ${item.type}`)
+      for (let i = 0; i < len; i++) {
+        const item = items[i]
+        console.log(`Processing item ${i} of ${len}, kind: ${item?.kind}, type: ${item?.type}`)
+        
+        if (!item) {
+          console.log(`item ${i}: item is null, skipping`)
+          continue
+        }
         
         try {
           // Try webkitGetAsEntry first
