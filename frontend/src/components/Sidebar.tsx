@@ -161,78 +161,51 @@ export function Sidebar({
 
     const allFiles: File[] = []
     
-    // Log all available data
-    console.log('=== handleDrop called ===')
-    console.log('dataTransfer.types:', e.dataTransfer.types)
-    console.log('items length:', e.dataTransfer.items?.length)
-    console.log('files length:', e.dataTransfer.files?.length)
+    // IMPORTANT: DataTransferItemList is a live collection and items may become
+    // invalid after the synchronous event handling phase. We need to extract
+    // all FileSystemEntry references IMMEDIATELY.
+    const dt = e.dataTransfer
+    const items = dt.items
     
-    // Log each item
-    const items = e.dataTransfer.items
-    if (items) {
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        console.log(`items[${i}]:`, item ? `kind=${item.kind}, type=${item.type}` : 'null')
-      }
-    }
-    
-    // Log each file
-    const dtFiles = e.dataTransfer.files
-    if (dtFiles) {
-      for (let i = 0; i < dtFiles.length; i++) {
-        console.log(`files[${i}]:`, dtFiles[i]?.name, 'size:', dtFiles[i]?.size)
-      }
-    }
-    
-    // Try to get entries using getData or other methods
-    // Some browsers support getting entries from the drop event
+    // Step 1: Collect all FileSystemEntry references synchronously
     const entries: FileSystemEntry[] = []
     
-    // Method 1: Try items
-    if (items) {
+    if (items && items.length > 0) {
+      // Use for loop with direct index access - do NOT convert to array
       for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (!item) continue
-        
-        try {
-          const entry = item.webkitGetAsEntry?.()
-          if (entry) {
-            entries.push(entry)
-            console.log(`items[${i}] entry:`, entry.name, entry.isFile ? 'file' : 'dir')
-          }
-        } catch (err) {
-          console.error(`items[${i}] error:`, err)
+        // Get the item directly - do not store in variable
+        const entry = items[i]?.webkitGetAsEntry?.()
+        if (entry) {
+          entries.push(entry)
         }
       }
     }
     
-    console.log('Total entries found:', entries.length)
-    
-    // Process entries
-    for (const entry of entries) {
-      if (entry.isFile) {
-        const file = await new Promise<File>((resolve, reject) =>
-          (entry as FileSystemFileEntry).file(resolve, reject)
-        )
-        allFiles.push(file)
-        console.log('Added file:', file.name)
-      } else if (entry.isDirectory) {
-        const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-        allFiles.push(...files)
-        console.log('Added', files.length, 'files from directory:', entry.name)
+    // Step 2: If we got entries, process them
+    if (entries.length > 0) {
+      for (const entry of entries) {
+        try {
+          if (entry.isFile) {
+            const file = await new Promise<File>((resolve, reject) =>
+              (entry as FileSystemFileEntry).file(resolve, reject)
+            )
+            allFiles.push(file)
+          } else if (entry.isDirectory) {
+            const dirFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+            allFiles.push(...dirFiles)
+          }
+        } catch (err) {
+          console.error('Error processing entry:', err)
+        }
+      }
+    } 
+    // Step 3: Fallback to dataTransfer.files if no entries
+    else if (dt.files && dt.files.length > 0) {
+      for (let i = 0; i < dt.files.length; i++) {
+        allFiles.push(dt.files[i])
       }
     }
-    
-    // Fallback: use dataTransfer.files if no entries found
-    if (allFiles.length === 0 && dtFiles && dtFiles.length > 0) {
-      console.log('Using dataTransfer.files as fallback')
-      for (let i = 0; i < dtFiles.length; i++) {
-        allFiles.push(dtFiles[i])
-        console.log('Added file from files:', dtFiles[i].name)
-      }
-    }
-    
-    console.log('Total files to upload:', allFiles.length)
+
     if (allFiles.length > 0) {
       await handleUpload(allFiles)
     }
