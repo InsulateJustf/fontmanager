@@ -159,69 +159,47 @@ export function Sidebar({
     e.preventDefault()
     setIsDragOver(false)
 
-    console.log('handleDrop called')
-    const items = e.dataTransfer.items
-    console.log('items length:', items?.length)
-
-    // Collect all files from dropped items (files and directories)
     const allFiles: File[] = []
+    const processedEntries = new Set<string>()
     
+    // Method 1: Try using items with webkitGetAsEntry (works for directories)
+    const items = e.dataTransfer.items
     if (items) {
-      const len = items.length
-      console.log('Starting to process', len, 'items')
-      
-      for (let i = 0; i < len; i++) {
+      for (let i = 0; i < items.length; i++) {
         const item = items[i]
-        console.log(`Processing item ${i} of ${len}, kind: ${item?.kind}, type: ${item?.type}`)
-        
-        if (!item) {
-          console.log(`item ${i}: item is null, skipping`)
-          continue
-        }
+        if (!item) continue
         
         try {
-          // Try webkitGetAsEntry first
           const entry = item.webkitGetAsEntry?.()
-          
           if (entry) {
-            console.log(`item ${i}: entry found -`, entry.name, 'isFile:', entry.isFile, 'isDirectory:', entry.isDirectory)
+            processedEntries.add(entry.name)
             if (entry.isFile) {
               const file = await new Promise<File>((resolve, reject) =>
                 (entry as FileSystemFileEntry).file(resolve, reject)
               )
               allFiles.push(file)
-              console.log(`item ${i}: added file`, file.name)
             } else if (entry.isDirectory) {
-              console.log(`item ${i}: reading directory`, entry.name)
               const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-              console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
               allFiles.push(...files)
-            }
-          } else {
-            // Fallback: try getAsFile()
-            console.log(`item ${i}: webkitGetAsEntry returned null, trying getAsFile()`)
-            const file = item.getAsFile?.()
-            if (file) {
-              allFiles.push(file)
-              console.log(`item ${i}: added file via getAsFile()`, file.name, 'size:', file.size)
-            } else {
-              console.log(`item ${i}: getAsFile() also returned null, skipping`)
             }
           }
         } catch (err) {
-          console.error(`item ${i}: error processing`, err)
+          console.error(`Error processing item ${i}:`, err)
+        }
+      }
+    }
+    
+    // Method 2: Also check dataTransfer.files for any files not already processed
+    const dtFiles = e.dataTransfer.files
+    if (dtFiles) {
+      for (let i = 0; i < dtFiles.length; i++) {
+        const file = dtFiles[i]
+        if (file && !processedEntries.has(file.name)) {
+          allFiles.push(file)
         }
       }
     }
 
-    // Fallback: if no files collected from entries, use dataTransfer.files
-    if (allFiles.length === 0 && e.dataTransfer.files.length > 0) {
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        allFiles.push(e.dataTransfer.files[i])
-      }
-    }
-
-    console.log('total files collected:', allFiles.length)
     if (allFiles.length > 0) {
       await handleUpload(allFiles)
     }
