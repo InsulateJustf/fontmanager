@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -154,12 +154,12 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
   })
 
   return (
-    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] flex flex-col">
-        <SheetHeader>
-          <SheetTitle>{font.family_name}</SheetTitle>
-          <SheetDescription>{font.style_name} · {font.format.toUpperCase()} · {formatFileSize(font.file_size)}</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{font.family_name}</DialogTitle>
+          <DialogDescription>{font.style_name} · {font.format.toUpperCase()} · {formatFileSize(font.file_size)}</DialogDescription>
+        </DialogHeader>
 
         <div className="flex-1 overflow-auto py-4 space-y-4">
           {/* Subfont Selector */}
@@ -289,7 +289,7 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
             </Button>
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
