@@ -181,18 +181,19 @@ fonts/
 ### 7. 上传流程 (app.py → POST /api/upload)
 
 ```
-接收 multipart files → 逐个处理:
+接收 multipart files → 按格式优先级排序（TTC > OTF > TTF）→ 逐个处理:
   1. detect_format() 检查扩展名
   2. 写入临时文件
-  3. parse_font() 解析元数据
+  3. parse_font() 解析元数据（优先使用 nameID=16 Typographic Family Name）
   4. cmap 指纹检测 + 非标准命名修正（TTF/OTF）
   5. is_windows_builtin() → 跳过系统字体 (status: "skipped")
-  6. get_font_by_family_style() 查重
+  6. _is_covered_by_ttc() → 检测 OTF/TTF 是否已被 TTC 覆盖，跳过重复
+  7. get_font_by_family_style() 查重
      - 已存在且旧的更完整 → 跳过 (status: "duplicate")
-     - 已存在且新的更完整 → 删除旧文件+记录，继续入库
-  7. generate_filename() + 按家族名存储（扁平或子目录）
-  8. 计算 SHA256 + CJK 检测 + TTC 子字体解析
-  9. insert_font() 写入数据库（含 cmap_fingerprint）
+     - 已存在且新的更完整 → 备份旧文件+删除旧文件+记录，继续入库
+  8. generate_filename() + 按家族名存储（扁平或子目录）
+  9. 计算 SHA256 + CJK 检测 + TTC 子字体解析
+  10. insert_font() 写入数据库（含 cmap_fingerprint）
 ```
 
 ### 8. 启动扫描 (app.py → scan_fonts_directory())
@@ -203,6 +204,7 @@ fonts/
 遍历目录中所有 .ttf/.otf/.ttc 文件（含子目录）:
   - 已在数据库中 (按 stored_filename 匹配) → 跳过
   - parse_font() 解析 → is_windows_builtin() 过滤系统字体
+  - _is_covered_by_ttc() → 检测 OTF/TTF 是否已被 TTC 覆盖，跳过重复
   - cmap 指纹检测 + 非标准命名修正
   - 已有同 family+style 记录 → 比较完整性，保留更完整的
   - 生成规范文件名 → 按家族名存储
@@ -214,7 +216,7 @@ fonts/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 前端页面 |
-| POST | `/api/upload` | 批量上传字体 |
+| POST | `/api/upload` | 批量上传字体（TTC 优先处理） |
 | GET | `/api/fonts` | 字体列表 |
 | GET | `/api/fonts/<id>/file` | 预览字体文件；`?download=1` 下载；`?subfont=N` 提取 TTC 子字体 |
 | GET | `/api/fonts/<id>/subfonts` | TTC 子字体列表 (缓存) |
@@ -224,20 +226,30 @@ fonts/
 | GET | `/api/fonts/download-all` | 打包所有字体为 ZIP 下载 |
 | GET | `/api/fonts/download-family` | 按家族名打包 ZIP；`?name=<family_name>` |
 | POST | `/api/fonts/download-selected` | 多选下载 ZIP；body: `{ids: number[]}` |
+| GET | `/api/tags` | 标签列表 |
+| POST | `/api/tags` | 创建标签 |
+| DELETE | `/api/tags/<id>` | 删除标签 |
+| GET | `/api/fonts/<id>/tags` | 字体的标签列表 |
+| POST | `/api/fonts/<id>/tags` | 为字体添加标签 |
+| DELETE | `/api/fonts/<id>/tags/<tag_id>` | 从字体删除标签 |
+| POST | `/api/fonts/batch/tags` | 批量添加标签；body: `{font_ids: number[], tag_id: number}` |
+| DELETE | `/api/fonts/batch/tags` | 批量删除标签；body: `{font_ids: number[], tag_id: number}` |
+| GET | `/api/version` | 获取当前版本信息（分支+commit id） |
 
 ### 10. 前端 (frontend/)
 
 前端使用 React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui 构建。
 
-- **侧边栏 (Sidebar.tsx)**: 拖拽上传区（支持递归读取嵌套文件夹）、文件/文件夹选择按钮、标签管理、统计信息、打包下载按钮
+- **侧边栏 (Sidebar.tsx)**: 拖拽上传区（支持递归读取嵌套文件夹）、文件/文件夹选择按钮（支持累加多文件夹）、标签管理、统计信息、打包下载按钮、版本号显示
 - **字体表格 (FontTable.tsx)**:
   - 按 `family_name` 家族分组显示，多字重家族显示为可展开/收起的分组
   - 每行左侧复选框，支持多选；表头全选（三态）；家族标题行一键选中整个家族
   - 选中后底部操作栏：显示选中数量 + 取消选择 + 下载选中按钮
   - 家族标题行带 📦 按钮，一键下载同家族全部字重 ZIP
   - 搜索框、格式/语言筛选、列排序、分页（每页 50 个家族）
-  - 操作按钮：预览、下载、删除（二次确认）
-- **字体预览 (FontPreview.tsx)**: 右侧滑出面板 + @font-face 加载，支持：
+  - 操作按钮：预览、下载（删除按钮需按科乐美密技显示）
+  - 多选后底部操作栏：批量下载 + 批量添加/删除标签
+- **字体预览 (FontPreview.tsx)**: 居中弹窗 + @font-face 加载，支持：
   - TTC 子字体选择器（按区域分组：SC/TC/HK/JP/KR，标签显示 variant + weight 以区分 Mono 等变体）
   - 自定义预览文字
   - 字号滑块 (12-120px)
@@ -292,7 +304,14 @@ fonts/
 | Windows 系统字体自动跳过 | 避免与系统自带字体冲突 |
 | 不合并同家族字体为 TTC | 原始文件保持不变，通过前端分组+批量下载实现等效功能 |
 | 修改字体前自动备份 | 原文件备份到 fonts/backup/，支持手动还原 |
+| 替换字体时也备份 | 新字体更完整替换旧字体时，也自动备份旧文件 |
 | 字形安全比对 | 修改后自动比对字形数据，异常时自动还原 |
-| 删除操作二次确认 | 两次 confirm 防止误删 |
+| 删除按钮隐藏 | 删除按钮需按科乐美密技（上上下下左右左右BA）显示，防止误删 |
+| TTC 覆盖检测 | 上传/扫描时自动检测 OTF/TTF 是否已被 TTC 覆盖，避免重复入库 |
+| TTC 优先处理 | 多文件上传时按格式排序（TTC > OTF > TTF），确保 TTC 先入库 |
+| 名称优先使用 nameID=16 | 优先使用 Typographic Family Name，避免字重名混入家族名 |
+| 变体标记剥离 | TTC 查找公共名称时剥离 Mono 等变体标记 |
+| HW 后缀剥离 | 名称清洗时剥离 HW（半宽）后缀 |
 | 名称清洗不剥离单字中文权重 | 避免"华文细黑"→"华文"、"微软雅黑"→"微软雅"等误伤 |
 | 多字重家族用子目录存储 | 单字体扁平、多字体归入 `fonts/FamilyName/`，保持目录整洁 |
+| 版本号显示 | 侧边栏底部显示当前版本（主分支: commit id，测试分支: test-commit id） |
