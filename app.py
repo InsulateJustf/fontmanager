@@ -154,8 +154,23 @@ def upload_font():
     if "files" not in request.files:
         return jsonify({"status": "error", "message": "No files provided"}), 400
     files = request.files.getlist("files")
+    
+    # Sort files by format priority: TTC > OTF > TTF
+    # This ensures TTC files are processed first, so OTF/TTF files can be checked against them
+    def _format_priority(filename):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == '.ttc':
+            return 0
+        elif ext == '.otf':
+            return 1
+        elif ext == '.ttf':
+            return 2
+        return 3
+    
+    files_sorted = sorted(files, key=lambda f: _format_priority(f.filename) if f.filename else 999)
+    
     results = []
-    for f in files:
+    for f in files_sorted:
         if not f.filename:
             results.append({"filename": "(empty)", "status": "error", "message": "Empty filename"})
             continue
@@ -265,9 +280,12 @@ def _process_single_file(file_storage):
         if existing:
             # Compare completeness
             if _is_more_complete(fmt, new_file_size, existing["format"], existing["file_size"]):
-                # New font is more complete — replace old one
+                # New font is more complete — backup old one and replace
                 old_path = os.path.join(FONT_STORAGE, existing["stored_filename"])
                 if os.path.exists(old_path):
+                    backup_path = _backup_font(old_path, existing["original_filename"])
+                    if backup_path:
+                        print(f"  📦 备份原字体: {existing['original_filename']} -> {backup_path}")
                     os.remove(old_path)
                 db.delete_font(existing["id"])
             else:
