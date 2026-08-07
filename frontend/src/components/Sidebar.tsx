@@ -285,6 +285,7 @@ export function Sidebar({
               className="flex-1"
               onClick={() => folderInputRef.current?.click()}
               disabled={isUploading}
+              title="按住 Ctrl/Cmd 可多选文件夹，或多次选择累加"
             >
               <FolderOpen className="h-4 w-4 mr-1" />
               文件夹
