@@ -612,10 +612,20 @@ def download_selected_fonts():
     )
 
 
-@app.route("/api/version", methods=["GET"])
-def get_version():
-    """Get current version info (git branch and commit)."""
+def _get_version():
+    """Get version info from file or git."""
     import subprocess
+    
+    # Try to read from version file first (generated during build)
+    version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
+    if os.path.exists(version_file):
+        try:
+            with open(version_file, "r") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    
+    # Fallback: try git
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -626,12 +636,17 @@ def get_version():
             stderr=subprocess.DEVNULL
         ).decode().strip()
         if branch == "main":
-            version = f"v{commit}"
+            return f"v{commit}"
         else:
-            version = f"{branch}-{commit}"
+            return f"{branch}-{commit}"
     except Exception:
-        version = "unknown"
-    return jsonify({"status": "ok", "version": version})
+        return "unknown"
+
+
+@app.route("/api/version", methods=["GET"])
+def get_version():
+    """Get current version info."""
+    return jsonify({"status": "ok", "version": _get_version()})
 
 
 @app.route("/api/tags", methods=["GET"])
