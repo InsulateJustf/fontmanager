@@ -159,53 +159,53 @@ export function Sidebar({
     e.preventDefault()
     setIsDragOver(false)
 
-    console.log('handleDrop called')
-    const items = e.dataTransfer.items
-    console.log('items length:', items?.length)
-
-    // Collect all files from dropped items (files and directories)
     const allFiles: File[] = []
     
-    if (items) {
-      // Convert DataTransferItemList to array to avoid issues with async iteration
-      const itemsArray = Array.from(items)
-      console.log('Starting to process', itemsArray.length, 'items')
-      for (let i = 0; i < itemsArray.length; i++) {
-        console.log(`Processing item ${i} of ${itemsArray.length}`)
+    // IMPORTANT: DataTransferItemList is a live collection and items may become
+    // invalid after the synchronous event handling phase. We need to extract
+    // all FileSystemEntry references IMMEDIATELY.
+    const dt = e.dataTransfer
+    const items = dt.items
+    
+    // Step 1: Collect all FileSystemEntry references synchronously
+    const entries: FileSystemEntry[] = []
+    
+    if (items && items.length > 0) {
+      // Use for loop with direct index access - do NOT convert to array
+      for (let i = 0; i < items.length; i++) {
+        // Get the item directly - do not store in variable
+        const entry = items[i]?.webkitGetAsEntry?.()
+        if (entry) {
+          entries.push(entry)
+        }
+      }
+    }
+    
+    // Step 2: If we got entries, process them
+    if (entries.length > 0) {
+      for (const entry of entries) {
         try {
-          const entry = itemsArray[i].webkitGetAsEntry?.()
-          console.log(`item ${i}:`, entry?.name, 'isFile:', entry?.isFile, 'isDirectory:', entry?.isDirectory)
-          if (!entry) {
-            console.log(`item ${i}: entry is null, skipping`)
-            continue
-          }
           if (entry.isFile) {
             const file = await new Promise<File>((resolve, reject) =>
               (entry as FileSystemFileEntry).file(resolve, reject)
             )
             allFiles.push(file)
-            console.log(`item ${i}: added file`, file.name)
           } else if (entry.isDirectory) {
-            console.log(`item ${i}: reading directory`, entry.name)
-            const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-            console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
-            allFiles.push(...files)
+            const dirFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+            allFiles.push(...dirFiles)
           }
         } catch (err) {
-          console.error(`item ${i}: error processing`, err)
+          console.error('Error processing entry:', err)
         }
-        console.log(`Finished processing item ${i}`)
+      }
+    } 
+    // Step 3: Fallback to dataTransfer.files if no entries
+    else if (dt.files && dt.files.length > 0) {
+      for (let i = 0; i < dt.files.length; i++) {
+        allFiles.push(dt.files[i])
       }
     }
 
-    // Fallback: if no files collected from entries, use dataTransfer.files
-    if (allFiles.length === 0 && e.dataTransfer.files.length > 0) {
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        allFiles.push(e.dataTransfer.files[i])
-      }
-    }
-
-    console.log('total files collected:', allFiles.length)
     if (allFiles.length > 0) {
       await handleUpload(allFiles)
     }

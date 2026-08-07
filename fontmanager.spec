@@ -9,6 +9,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('static', 'static'),
+        ('VERSION', '.'),
     ],
     hiddenimports=['fontTools', 'waitress'],
     hookspath=[],

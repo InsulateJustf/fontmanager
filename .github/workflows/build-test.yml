@@ -37,6 +37,14 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Generate VERSION file
+        run: |
+          $branch = "test"
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          $version = "$branch-$commit"
+          Set-Content -Path "VERSION" -Value $version
+          Write-Host "Generated version: $version"
+
       - name: Build exe with PyInstaller
         run: |
           pyinstaller fontmanager.spec --clean --noconfirm
