@@ -56,24 +56,46 @@ export function Sidebar({
   const readDirectoryEntries = async (dirEntry: FileSystemDirectoryEntry): Promise<File[]> => {
     const reader = dirEntry.createReader()
     const allFiles: File[] = []
-    // readEntries() may return partial results; loop until empty
-    const readBatch = (): Promise<FileSystemEntry[]> =>
-      new Promise((resolve, reject) => reader.readEntries(resolve, reject))
-    let entries = await readBatch()
-    while (entries.length > 0) {
-      for (const entry of entries) {
-        if (entry.isFile) {
-          const file = await new Promise<File>((resolve, reject) =>
-            (entry as FileSystemFileEntry).file(resolve, reject)
+    
+    // readEntries() returns partial results in Chrome; must loop until empty
+    const readAllEntries = (): Promise<FileSystemEntry[]> => {
+      return new Promise((resolve) => {
+        const allEntries: FileSystemEntry[] = []
+        const readBatch = () => {
+          reader.readEntries(
+            (entries) => {
+              if (entries.length === 0) {
+                resolve(allEntries)
+              } else {
+                allEntries.push(...entries)
+                readBatch()
+              }
+            },
+            (err) => {
+              console.error('readEntries error:', err)
+              resolve(allEntries)
+            }
           )
-          allFiles.push(file)
-        } else if (entry.isDirectory) {
-          const subFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-          allFiles.push(...subFiles)
         }
-      }
-      entries = await readBatch()
+        readBatch()
+      })
     }
+    
+    const entries = await readAllEntries()
+    console.log(`readDirectoryEntries: ${dirEntry.name} has ${entries.length} entries`)
+    
+    for (const entry of entries) {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject)
+        )
+        allFiles.push(file)
+      } else if (entry.isDirectory) {
+        const subFiles = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+        allFiles.push(...subFiles)
+      }
+    }
+    console.log(`readDirectoryEntries: ${dirEntry.name} found ${allFiles.length} files total`)
     return allFiles
   }
 
