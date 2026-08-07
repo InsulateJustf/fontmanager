@@ -281,10 +281,10 @@ def parse_font(filepath: str) -> dict:
         name_table = font.get("name")
         if name_table is None:
             raise ValueError("Font has no name table")
-        family_name = (_get_name(name_table, 1, prefer_chinese=True)
-                       or _get_name(name_table, 16, prefer_chinese=True))
-        style_name = (_get_name(name_table, 2, prefer_chinese=False)
-                      or _get_name(name_table, 17, prefer_chinese=False))
+        family_name = (_get_name(name_table, 16, prefer_chinese=True)
+                       or _get_name(name_table, 1, prefer_chinese=True))
+        style_name = (_get_name(name_table, 17, prefer_chinese=False)
+                      or _get_name(name_table, 2, prefer_chinese=False))
         version = _get_name(name_table, 5, prefer_chinese=False) or ""
         full_name = _get_name(name_table, 4, prefer_chinese=True) or ""
         if not family_name:
