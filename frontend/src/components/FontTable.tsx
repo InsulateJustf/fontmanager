@@ -263,18 +263,14 @@ export function FontTable({
   const renderCJKBadges = (font: Font) => {
     const cjk = cjkInfoMap[font.id]
     if (!cjk) return <Badge variant="outline">检测中...</Badge>
-    if (!cjk.has_cjk) return <Badge variant="secondary">无中文</Badge>
+    if (!cjk.has_cjk) return <Badge variant="secondary">英</Badge>
     return (
       <div className="flex gap-1 flex-wrap justify-center">
         {cjk.supports_sc && <Badge className="bg-green-100 text-green-800 hover:bg-green-200">简</Badge>}
         {cjk.supports_tc && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">繁</Badge>}
         {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200">日</Badge>}
         {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">韩</Badge>}
-        {cjk.warning && (
-          <Badge variant="destructive" className="text-xs">
-            ⚠️ {cjk.warning}
-          </Badge>
-        )}
+
       </div>
     )
   }
@@ -399,7 +395,7 @@ export function FontTable({
             <SelectItem value="tc">繁体中文</SelectItem>
             <SelectItem value="ja">日文</SelectItem>
             <SelectItem value="ko">韩文</SelectItem>
-            <SelectItem value="none">无中文</SelectItem>
+            <SelectItem value="none">英</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -435,7 +431,7 @@ export function FontTable({
                 </div>
               </TableHead>
               <TableHead className="text-center">标签</TableHead>
-              <TableHead className="text-center">中文支持</TableHead>
+              <TableHead className="text-center">语言支持</TableHead>
               <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('format')}>
                 <div className="flex items-center justify-center gap-1">
                   格式
