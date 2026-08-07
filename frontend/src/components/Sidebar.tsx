@@ -112,14 +112,23 @@ export function Sidebar({
   }
 
   const handleFolderSelect = (files: FileList | null) => {
-    if (!files || files.length === 0) return
+    console.log('handleFolderSelect called, files:', files?.length)
+    if (!files || files.length === 0) {
+      console.log('handleFolderSelect: no files')
+      return
+    }
     const fontFiles = filterFontFiles(files)
+    console.log('handleFolderSelect: filtered font files:', fontFiles.length)
     if (fontFiles.length === 0) {
       alert('未找到字体文件（TTF/OTF/TTC）')
       return
     }
     console.log('handleFolderSelect: adding', fontFiles.length, 'files to pending')
-    setPendingFiles(prev => [...prev, ...fontFiles])
+    setPendingFiles(prev => {
+      const newFiles = [...prev, ...fontFiles]
+      console.log('handleFolderSelect: new pendingFiles count:', newFiles.length)
+      return newFiles
+    })
     setFolderInputKey(prev => prev + 1)
   }
 
@@ -285,7 +294,6 @@ export function Sidebar({
               className="flex-1"
               onClick={() => folderInputRef.current?.click()}
               disabled={isUploading}
-              title="按住 Ctrl/Cmd 可多选文件夹，或多次选择累加"
             >
               <FolderOpen className="h-4 w-4 mr-1" />
               文件夹
