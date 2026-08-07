@@ -173,23 +173,32 @@ export function Sidebar({
       for (let i = 0; i < itemsArray.length; i++) {
         console.log(`Processing item ${i} of ${itemsArray.length}`)
         try {
-          const entry = itemsArray[i].webkitGetAsEntry?.()
-          console.log(`item ${i}:`, entry?.name, 'isFile:', entry?.isFile, 'isDirectory:', entry?.isDirectory)
-          if (!entry) {
-            console.log(`item ${i}: entry is null, skipping`)
-            continue
-          }
-          if (entry.isFile) {
-            const file = await new Promise<File>((resolve, reject) =>
-              (entry as FileSystemFileEntry).file(resolve, reject)
-            )
-            allFiles.push(file)
-            console.log(`item ${i}: added file`, file.name)
-          } else if (entry.isDirectory) {
-            console.log(`item ${i}: reading directory`, entry.name)
-            const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
-            console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
-            allFiles.push(...files)
+          const item = itemsArray[i]
+          const entry = item.webkitGetAsEntry?.()
+          
+          if (entry) {
+            console.log(`item ${i}:`, entry.name, 'isFile:', entry.isFile, 'isDirectory:', entry.isDirectory)
+            if (entry.isFile) {
+              const file = await new Promise<File>((resolve, reject) =>
+                (entry as FileSystemFileEntry).file(resolve, reject)
+              )
+              allFiles.push(file)
+              console.log(`item ${i}: added file`, file.name)
+            } else if (entry.isDirectory) {
+              console.log(`item ${i}: reading directory`, entry.name)
+              const files = await readDirectoryEntries(entry as FileSystemDirectoryEntry)
+              console.log(`item ${i}: directory ${entry.name} found ${files.length} files`)
+              allFiles.push(...files)
+            }
+          } else {
+            // Fallback: try getAsFile() for items where webkitGetAsEntry returns null
+            const file = item.getAsFile?.()
+            if (file) {
+              allFiles.push(file)
+              console.log(`item ${i}: added file via getAsFile()`, file.name)
+            } else {
+              console.log(`item ${i}: no entry and no file, skipping`)
+            }
           }
         } catch (err) {
           console.error(`item ${i}: error processing`, err)
