@@ -51,7 +51,7 @@ export function Sidebar({
   const [editingTag, setEditingTag] = useState<TagType | null>(null)
   const [editTagName, setEditTagName] = useState('')
   const [editTagColor, setEditTagColor] = useState('')
-  const [showColorPicker, setShowColorPicker] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
 
@@ -217,7 +217,6 @@ export function Sidebar({
     setEditingTag(tag)
     setEditTagName(tag.name)
     setEditTagColor(tag.color || PRESET_COLORS[0])
-    setShowColorPicker(false)
   }
 
   const handleSaveEditTag = async () => {
@@ -515,25 +514,23 @@ export function Sidebar({
                     />
                   ))}
                 </div>
-                <div className="relative">
+                <label className="relative cursor-pointer">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    asChild
                   >
-                    <Palette className="h-4 w-4" />
+                    <span>
+                      <Palette className="h-4 w-4" />
+                    </span>
                   </Button>
-                  {showColorPicker && (
-                    <div className="absolute right-0 top-full mt-1 bg-white border rounded-md shadow-lg z-50 p-2">
-                      <input
-                        type="color"
-                        value={editTagColor}
-                        onChange={(e) => setEditTagColor(e.target.value)}
-                        className="w-32 h-32 cursor-pointer"
-                      />
-                    </div>
-                  )}
-                </div>
+                  <input
+                    type="color"
+                    value={editTagColor}
+                    onChange={(e) => setEditTagColor(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </label>
               </div>
             </div>
             <div className="flex justify-end gap-2">

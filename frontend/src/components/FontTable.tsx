@@ -102,7 +102,8 @@ export function FontTable({
   
   // 快速创建标签相关状态
   const [newTagName, setNewTagName] = useState('')
-  const [isInputFocused, setIsInputFocused] = useState(false)
+
+  const tagSelectRef = useRef<HTMLDivElement>(null)
 
   // 判断是否为中文字体
   const isChineseFont = (familyName: string) => /[\u4e00-\u9fff]/.test(familyName)
@@ -341,13 +342,36 @@ export function FontTable({
     }
   }
 
+  // 处理标签选择区域的焦点管理
+  useEffect(() => {
+    if (tagFontId === null) return
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagSelectRef.current && !tagSelectRef.current.contains(e.target as Node)) {
+        setTagFontId(null)
+      }
+    }
+    
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 100)
+    
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [tagFontId])
+
   const renderTags = (font: Font) => {
     const fontTags = fontTagsMap[font.id] || []
     const availableTags = tags.filter(t => !fontTags.some(ft => ft.id === t.id))
     const isTagSelectOpen = tagFontId === font.id
 
     return (
-      <div className="flex flex-col gap-1 justify-center items-start min-w-[120px]">
+      <div 
+        ref={isTagSelectOpen ? tagSelectRef : undefined}
+        className="flex flex-col gap-1 justify-center items-start min-w-[120px]"
+      >
         {fontTags.map(tag => (
           <Badge
             key={tag.id}
@@ -371,17 +395,11 @@ export function FontTable({
           >
             <select
               className="text-xs border rounded px-1 py-0.5 w-full"
-              autoFocus
-              onBlur={() => {
-                // 延迟关闭，避免点击输入框时立即关闭
-                setTimeout(() => {
-                  if (!isInputFocused) {
-                    setTagFontId(null)
-                  }
-                }, 200)
-              }}
               onChange={(e) => {
-                if (e.target.value) handleAddTag(font.id, Number(e.target.value))
+                if (e.target.value) {
+                  handleAddTag(font.id, Number(e.target.value))
+                  setTagFontId(null)
+                }
               }}
             >
               <option value="">选择标签...</option>
@@ -395,15 +413,6 @@ export function FontTable({
                 onChange={(e) => setNewTagName(e.target.value)}
                 placeholder="快速创建..."
                 className="h-6 text-xs"
-                onFocus={() => setIsInputFocused(true)}
-                onBlur={() => {
-                  setIsInputFocused(false)
-                  setTimeout(() => {
-                    if (!isInputFocused) {
-                      setTagFontId(null)
-                    }
-                  }, 200)
-                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
