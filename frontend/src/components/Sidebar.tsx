@@ -151,11 +151,13 @@ export function Sidebar({
     const allFiles: File[] = []
     
     if (items) {
-      console.log('Starting to process', items.length, 'items')
-      for (let i = 0; i < items.length; i++) {
-        console.log(`Processing item ${i} of ${items.length}`)
+      // Convert DataTransferItemList to array to avoid issues with async iteration
+      const itemsArray = Array.from(items)
+      console.log('Starting to process', itemsArray.length, 'items')
+      for (let i = 0; i < itemsArray.length; i++) {
+        console.log(`Processing item ${i} of ${itemsArray.length}`)
         try {
-          const entry = items[i].webkitGetAsEntry?.()
+          const entry = itemsArray[i].webkitGetAsEntry?.()
           console.log(`item ${i}:`, entry?.name, 'isFile:', entry?.isFile, 'isDirectory:', entry?.isDirectory)
           if (!entry) {
             console.log(`item ${i}: entry is null, skipping`)
