@@ -46,6 +46,28 @@ def _sanitize_dirname(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
 
+
+def _is_covered_by_ttc(family_name: str, style_name: str) -> bool:
+    """Check if a TTF/OTF font is already covered by an existing TTC in the database.
+    
+    Returns True if there is a TTC with the same family_name that has a subfont
+    with a matching weight/style.
+    """
+    ttc_fonts = db.get_fonts_by_family(family_name)
+    for ttc in ttc_fonts:
+        if ttc["format"] != "ttc":
+            continue
+        subfonts_info = ttc.get("subfonts_info")
+        if not subfonts_info:
+            continue
+        subfonts = json.loads(subfonts_info) if isinstance(subfonts_info, str) else subfonts_info
+        for sf in subfonts:
+            sf_weight = sf.get("weight", "")
+            sf_style = sf.get("style_name", "")
+            if sf_weight == style_name or sf_style == style_name:
+                return True
+    return False
+
 def _get_backup_dir():
     """Get or create the backup directory."""
     backup_dir = os.path.join(FONT_STORAGE, "backup")
@@ -225,6 +247,14 @@ def _process_single_file(file_storage):
                 os.remove(tmp_path)
             return {"filename": original_name, "status": "skipped",
                     "message": "Windows 系统自带字体，已跳过",
+                    "family_name": family_name, "style_name": style_name}
+
+        # Skip TTF/OTF if already covered by an existing TTC
+        if fmt in ("ttf", "otf") and _is_covered_by_ttc(family_name, style_name):
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            return {"filename": original_name, "status": "skipped",
+                    "message": "该字重已包含在 TTC 文件中，已跳过",
                     "family_name": family_name, "style_name": style_name}
 
         new_file_size = os.path.getsize(tmp_path)
@@ -769,6 +799,11 @@ def scan_fonts_directory():
         # Skip Windows built-in fonts
         if is_windows_builtin(family_name):
             print("  ⚠️  跳过 Windows 系统字体: {} ({})".format(family_name, fname))
+            continue
+
+        # Skip TTF/OTF if already covered by an existing TTC
+        if fmt in ("ttf", "otf") and _is_covered_by_ttc(family_name, style_name):
+            print("  ⚠️  跳过已包含在 TTC 中的字重: {} {} ({})".format(family_name, style_name, fname))
             continue
 
         # Check if this family+style already exists in DB
