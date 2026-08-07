@@ -170,14 +170,18 @@ export function Sidebar({
       // Convert DataTransferItemList to array to avoid issues with async iteration
       const itemsArray = Array.from(items)
       console.log('Starting to process', itemsArray.length, 'items')
+      console.log('Items types:', itemsArray.map(item => item.kind).join(', '))
+      
       for (let i = 0; i < itemsArray.length; i++) {
-        console.log(`Processing item ${i} of ${itemsArray.length}`)
+        const item = itemsArray[i]
+        console.log(`Processing item ${i} of ${itemsArray.length}, kind: ${item.kind}, type: ${item.type}`)
+        
         try {
-          const item = itemsArray[i]
+          // Try webkitGetAsEntry first
           const entry = item.webkitGetAsEntry?.()
           
           if (entry) {
-            console.log(`item ${i}:`, entry.name, 'isFile:', entry.isFile, 'isDirectory:', entry.isDirectory)
+            console.log(`item ${i}: entry found -`, entry.name, 'isFile:', entry.isFile, 'isDirectory:', entry.isDirectory)
             if (entry.isFile) {
               const file = await new Promise<File>((resolve, reject) =>
                 (entry as FileSystemFileEntry).file(resolve, reject)
@@ -191,19 +195,19 @@ export function Sidebar({
               allFiles.push(...files)
             }
           } else {
-            // Fallback: try getAsFile() for items where webkitGetAsEntry returns null
+            // Fallback: try getAsFile()
+            console.log(`item ${i}: webkitGetAsEntry returned null, trying getAsFile()`)
             const file = item.getAsFile?.()
             if (file) {
               allFiles.push(file)
-              console.log(`item ${i}: added file via getAsFile()`, file.name)
+              console.log(`item ${i}: added file via getAsFile()`, file.name, 'size:', file.size)
             } else {
-              console.log(`item ${i}: no entry and no file, skipping`)
+              console.log(`item ${i}: getAsFile() also returned null, skipping`)
             }
           }
         } catch (err) {
           console.error(`item ${i}: error processing`, err)
         }
-        console.log(`Finished processing item ${i}`)
       }
     }
 
