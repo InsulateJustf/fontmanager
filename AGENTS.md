@@ -132,7 +132,7 @@ fontmanager/
 - **用途**: 上传时自动检测非标准命名（如 HomuraM 系列），从 raw name 提取正确的 base + weight，更新数据库元数据
 - **仅修改 DB 元数据**，不修改字体文件本身（避免 fontTools 保存 CFF 字体时丢失数据）
 
-### 5. 数据库 (db.py)
+### 6. 数据库 (db.py)
 
 SQLite 表 `fonts`:
 
@@ -158,7 +158,26 @@ SQLite 表 `fonts`:
 - `get_fonts_by_family(family_name)` 按家族名查询所有字重
 - `get_fonts_by_fingerprint(hash)` 按 cmap 指纹查询同源字体
 
-### 6. 存储策略 (app.py)
+SQLite 表 `tags`:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 ID |
+| name | TEXT | 标签名称（UNIQUE） |
+| color | TEXT | 标签颜色（默认 #6b7280） |
+| created_at | TIMESTAMP | 创建时间 |
+
+SQLite 表 `font_tags`:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| font_id | INTEGER | 字体 ID（外键） |
+| tag_id | INTEGER | 标签 ID（外键） |
+
+- PRIMARY KEY: `(font_id, tag_id)`
+- 级联删除：字体或标签删除时自动清理关联记录
+
+### 7. 存储策略 (app.py)
 
 字体文件按家族名组织存储：
 
@@ -179,7 +198,7 @@ fonts/
 - 没有 → 扁平存储
 - 启动时自动迁移：对 2+ 字体的家族执行子目录归入（`migrate_flat_to_subdirs()`）
 
-### 7. 上传流程 (app.py → POST /api/upload)
+### 8. 上传流程 (app.py → POST /api/upload)
 
 ```
 接收 multipart files → 按格式优先级排序（TTC > OTF > TTF）→ 逐个处理:
@@ -197,7 +216,7 @@ fonts/
   10. insert_font() 写入数据库（含 cmap_fingerprint）
 ```
 
-### 8. 启动扫描 (app.py → scan_fonts_directory())
+### 9. 启动扫描 (app.py → scan_fonts_directory())
 
 服务启动时自动扫描 FONT_STORAGE 目录（含子目录）：
 
@@ -212,7 +231,7 @@ fonts/
   - 计算元数据 → insert_font() 入库
 ```
 
-### 9. API 端点
+### 10. API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -230,6 +249,7 @@ fonts/
 | GET | `/api/tags` | 标签列表 |
 | POST | `/api/tags` | 创建标签 |
 | DELETE | `/api/tags/<id>` | 删除标签 |
+| PUT | `/api/tags/<id>` | 更新标签（名称/颜色） |
 | GET | `/api/fonts/<id>/tags` | 字体的标签列表 |
 | POST | `/api/fonts/<id>/tags` | 为字体添加标签 |
 | DELETE | `/api/fonts/<id>/tags/<tag_id>` | 从字体删除标签 |
@@ -237,11 +257,11 @@ fonts/
 | DELETE | `/api/fonts/batch/tags` | 批量删除标签；body: `{font_ids: number[], tag_id: number}` |
 | GET | `/api/version` | 获取当前版本信息（分支+commit id） |
 
-### 10. 前端 (frontend/)
+### 11. 前端 (frontend/)
 
 前端使用 React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui 构建。
 
-- **侧边栏 (Sidebar.tsx)**: 拖拽上传区（支持递归读取嵌套文件夹）、文件/文件夹选择按钮（支持累加多文件夹）、标签管理、统计信息、打包下载按钮、版本号显示
+- **侧边栏 (Sidebar.tsx)**: 拖拽上传区（支持递归读取嵌套文件夹）、文件/文件夹选择按钮（支持累加多文件夹）、标签管理（创建/编辑/删除标签，支持颜色选择）、统计信息、打包下载按钮、版本号显示
 - **字体表格 (FontTable.tsx)**:
   - 按 `family_name` 家族分组显示，多字重家族显示为可展开/收起的分组
   - 每行左侧复选框，支持多选；表头全选（三态）；家族标题行一键选中整个家族
@@ -250,6 +270,8 @@ fonts/
   - 搜索框、格式/语言筛选、列排序、分页（每页 50 个家族）
   - 操作按钮：预览、下载（删除按钮需按科乐美密技显示）
   - 多选后底部操作栏：批量下载 + 批量添加/删除标签
+  - 语言筛选支持多选（简体中文/繁体中文/日文/韩文/英文）
+  - 内联预览：每行显示字体名称的实际渲染效果
 - **字体预览 (FontPreview.tsx)**: 居中弹窗 + @font-face 加载，支持：
   - TTC 子字体选择器（按区域分组：SC/TC/HK/JP/KR，标签显示 variant + weight 以区分 Mono 等变体）
   - 自定义预览文字
@@ -258,9 +280,10 @@ fonts/
   - 删除操作（二次确认）
   - 还原操作（双击标题栏显示，隐藏设计防误触）
 - **上传结果 (UploadResults.tsx)**: 逐条显示状态图标（✅成功 / ⚠️重复 / ⏭️跳过系统字体 / ❌失败）
+- **管理员模式**: 通过科乐美密技（上上下下左右左右BA）激活，显示删除按钮和隐藏列（格式/大小）
 - **响应式**: 640px 以下隐藏格式/大小列
 
-### 11. 部署方式
+### 12. 部署方式
 
 **方式一: Python 环境**
 - Windows: 双击 `start.bat`（自动创建 venv、安装依赖）
@@ -278,7 +301,7 @@ fonts/
 - `build.yml`: push/PR 到 main 分支或 tag `v*` 时自动触发，产物保留 90 天，tag 推送时自动创建 Release
 - `build-test.yml`: 仅 `workflow_dispatch` 手动触发，checkout test 分支，产物保留 30 天
 
-### 12. 开发约定
+### 13. 开发约定
 
 - **Python 版本**: 3.9+（使用 `typing.Optional`、`typing.List` 等旧式类型注解）
 - **前端技术**: React 19 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui
@@ -293,7 +316,7 @@ fonts/
 - **测试流程**: 每次实现新功能或修复 Bug 后，向用户报告改动内容，等待用户手动测试并确认无误后，由用户发起提交和推送要求
 - **分支工作流**: 所有开发操作（代码修改、新功能、Bug 修复）必须在 `test` 分支上进行，用户确认无误后再合并并推送到 `main` 分支
 
-### 13. 关键设计决策
+### 14. 关键设计决策
 
 | 决策 | 说明 |
 |------|------|
