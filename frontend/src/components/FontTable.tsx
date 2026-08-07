@@ -87,7 +87,7 @@ export function FontTable({
 }: FontTableProps) {
   const [search, setSearch] = useState('')
   const [formatFilter, setFormatFilter] = useState<string>('all')
-  const [langFilter, setLangFilter] = useState<string>('all')
+  const [langFilters, setLangFilters] = useState<Set<string>>(new Set(['all']))
   const [sortField, setSortField] = useState<SortField>('family_name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
@@ -98,6 +98,7 @@ export function FontTable({
   const [showBatchTagSelect, setShowBatchTagSelect] = useState(false)
   const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove'>('add')
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
+  const [showLangFilter, setShowLangFilter] = useState(false)
   const batchTagRef = useRef<HTMLDivElement>(null)
   
   // 快速创建标签相关状态
@@ -117,14 +118,15 @@ export function FontTable({
       const matchesFormat = formatFilter === 'all' || font.format === formatFilter
       const cjk = cjkInfoMap[font.id]
       let matchesLang = true
-      if (langFilter !== 'all' && cjk) {
-        switch (langFilter) {
-          case 'sc': matchesLang = cjk.supports_sc; break
-          case 'tc': matchesLang = cjk.supports_tc; break
-          case 'ja': matchesLang = cjk.supports_ja; break
-          case 'ko': matchesLang = cjk.supports_ko; break
-          case 'none': matchesLang = !cjk.has_cjk; break
-        }
+      if (!langFilters.has('all') && cjk) {
+        matchesLang = false
+        if (langFilters.has('sc') && cjk.supports_sc) matchesLang = true
+        if (langFilters.has('tc') && cjk.supports_tc) matchesLang = true
+        if (langFilters.has('ja') && cjk.supports_ja) matchesLang = true
+        if (langFilters.has('ko') && cjk.supports_ko) matchesLang = true
+        if (langFilters.has('none') && !cjk.has_cjk) matchesLang = true
+      } else if (!langFilters.has('all') && !cjk) {
+        matchesLang = langFilters.has('none')
       }
       // Tag filtering
       let matchesTag = true
@@ -134,7 +136,7 @@ export function FontTable({
       }
       return matchesSearch && matchesFormat && matchesLang && matchesTag
     })
-  }, [fonts, search, formatFilter, langFilter, selectedTagId, cjkInfoMap, fontTagsMap])
+  }, [fonts, search, formatFilter, langFilters, selectedTagId, cjkInfoMap, fontTagsMap])
 
   // Sort - 先英后中
   const sorted = useMemo(() => {
@@ -266,6 +268,21 @@ export function FontTable({
       return next
     })
   }
+
+  // Close language filter dropdown when clicking outside
+  useEffect(() => {
+    if (!showLangFilter) return
+    const handleClickOutside = (_e: MouseEvent) => {
+      setShowLangFilter(false)
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showLangFilter])
 
   // Close batch tag dropdown when clicking outside
   useEffect(() => {
@@ -466,42 +483,70 @@ export function FontTable({
             className="pl-8"
           />
         </div>
-        <Select
-          value={formatFilter}
-          onValueChange={(v) => {
-            setFormatFilter(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[100px]">
-            <SelectValue placeholder="格式" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部格式</SelectItem>
-            <SelectItem value="ttc">TTC</SelectItem>
-            <SelectItem value="otf">OTF</SelectItem>
-            <SelectItem value="ttf">TTF</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
-          value={langFilter}
-          onValueChange={(v) => {
-            setLangFilter(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[100px]">
-            <SelectValue placeholder="语言" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部语言</SelectItem>
-            <SelectItem value="sc">简体中文</SelectItem>
-            <SelectItem value="tc">繁体中文</SelectItem>
-            <SelectItem value="ja">日文</SelectItem>
-            <SelectItem value="ko">韩文</SelectItem>
-            <SelectItem value="none">英</SelectItem>
-          </SelectContent>
-        </Select>
+        {isAdmin && (
+          <Select
+            value={formatFilter}
+            onValueChange={(v) => {
+              setFormatFilter(v)
+              setCurrentPage(1)
+            }}
+          >
+            <SelectTrigger className="w-[100px]">
+              <SelectValue placeholder="格式" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部格式</SelectItem>
+              <SelectItem value="ttc">TTC</SelectItem>
+              <SelectItem value="otf">OTF</SelectItem>
+              <SelectItem value="ttf">TTF</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => setShowLangFilter(!showLangFilter)}
+          >
+            语言 {langFilters.has('all') ? '全部' : `已选${langFilters.size}`}
+          </Button>
+          {showLangFilter && (
+            <div className="absolute top-full left-0 mt-1 bg-white border rounded-md shadow-lg z-50 p-2 min-w-[120px]">
+              {[
+                { value: 'all', label: '全部' },
+                { value: 'sc', label: '简体中文' },
+                { value: 'tc', label: '繁体中文' },
+                { value: 'ja', label: '日文' },
+                { value: 'ko', label: '韩文' },
+                { value: 'none', label: '英' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={langFilters.has(opt.value)}
+                    onChange={() => {
+                      setLangFilters(prev => {
+                        const next = new Set(prev)
+                        if (opt.value === 'all') {
+                          return new Set(['all'])
+                        }
+                        next.delete('all')
+                        if (next.has(opt.value)) next.delete(opt.value)
+                        else next.add(opt.value)
+                        if (next.size === 0) return new Set(['all'])
+                        return next
+                      })
+                      setCurrentPage(1)
+                    }}
+                    className="rounded"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         {isAdmin && (
           <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
             管理员模式
