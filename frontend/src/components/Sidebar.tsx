@@ -111,25 +111,26 @@ export function Sidebar({
     return result
   }
 
-  const handleFolderSelect = (files: FileList | null) => {
-    console.log('handleFolderSelect called, files:', files?.length)
-    if (!files || files.length === 0) {
-      console.log('handleFolderSelect: no files')
-      return
-    }
+  // Called after files are added to pending, ask if user wants to select more
+  const handleFolderSelectComplete = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
     const fontFiles = filterFontFiles(files)
-    console.log('handleFolderSelect: filtered font files:', fontFiles.length)
     if (fontFiles.length === 0) {
       alert('未找到字体文件（TTF/OTF/TTC）')
       return
     }
-    console.log('handleFolderSelect: adding', fontFiles.length, 'files to pending')
-    setPendingFiles(prev => {
-      const newFiles = [...prev, ...fontFiles]
-      console.log('handleFolderSelect: new pendingFiles count:', newFiles.length)
-      return newFiles
-    })
+    const newPendingCount = pendingFiles.length + fontFiles.length
+    setPendingFiles(prev => [...prev, ...fontFiles])
     setFolderInputKey(prev => prev + 1)
+    
+    // Ask if user wants to select more folders
+    const continueSelect = confirm(`已选择 ${newPendingCount} 个字体文件。
+
+是否继续选择更多文件夹？`)
+    if (continueSelect) {
+      // Open folder dialog again after a small delay
+      setTimeout(() => folderInputRef.current?.click(), 100)
+    }
   }
 
   const handlePendingUpload = async () => {
@@ -315,7 +316,7 @@ export function Sidebar({
             webkitdirectory=""
             multiple
             className="hidden"
-            onChange={(e) => handleFolderSelect(e.target.files)}
+            onChange={(e) => handleFolderSelectComplete(e.target.files)}
           />
         </div>
 
