@@ -216,3 +216,14 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / 1048576).toFixed(1) + ' MB'
 }
+
+export async function updateTag(tagId: number, data: { name?: string; color?: string }): Promise<Tag> {
+  const res = await fetch(`${API_BASE}/tags/${tagId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  const result = await res.json()
+  if (result.status !== 'ok') throw new Error(result.message || 'Failed to update tag')
+  return result.tag
+}

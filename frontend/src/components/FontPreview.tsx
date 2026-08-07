@@ -34,9 +34,10 @@ interface FontPreviewProps {
   open: boolean
   onClose: () => void
   onDelete: (fontId: number) => void
+  isAdmin: boolean
 }
 
-export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps) {
+export function FontPreview({ font, open, onClose, onDelete, isAdmin }: FontPreviewProps) {
   const [cjkInfo, setCjkInfo] = useState<CJKInfo | null>(null)
   const [subfonts, setSubfonts] = useState<SubFont[]>([])
   const [selectedSubfont, setSelectedSubfont] = useState<number | undefined>(undefined)
@@ -108,26 +109,7 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
   }, [font, open, selectedSubfont])
 
   const [showRestore, setShowRestore] = useState(false)
-  const [showDelete, setShowDelete] = useState(false)
-  const konamiRef = useRef<number[]>([])
-  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      konamiRef.current.push(e.keyCode)
-      if (konamiRef.current.length > konamiCode.length) {
-        konamiRef.current.shift()
-      }
-      if (konamiRef.current.length === konamiCode.length && 
-          konamiRef.current.every((code, i) => code === konamiCode[i])) {
-        setShowDelete(true)
-        konamiRef.current = []
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-  
   const handleRestore = async () => {
     if (!font) return
     if (!confirm(`确定要还原 "${font.family_name} - ${font.style_name}" 到原始版本？`)) return
@@ -157,27 +139,33 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
   }
 
   // Group subfonts by region
+  const regionOrder = ['SC', 'TC', 'HK', 'JP', 'KR', 'OTHER']
   const regionLabels: Record<string, string> = {
-    SC: '简体中文 (SC)',
-    TC: '繁体中文 (TC)',
-    HK: '香港繁体 (HK)',
-    JP: '日文 (JP)',
-    KR: '韩文 (KR)',
+    SC: '简体中文',
+    TC: '繁体中文',
+    HK: '香港繁体',
+    JP: '日文',
+    KR: '韩文',
+    OTHER: '其他',
   }
-  const regionOrder = ['SC', 'TC', 'HK', 'JP', 'KR']
   const groupedSubfonts: Record<string, SubFont[]> = {}
-  subfonts.forEach((sf) => {
-    const region = sf.region || 'Other'
+  for (const sf of subfonts) {
+    const region = sf.region || 'OTHER'
     if (!groupedSubfonts[region]) groupedSubfonts[region] = []
     groupedSubfonts[region].push(sf)
-  })
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{font.family_name}</DialogTitle>
-          <DialogDescription>{font.style_name} · {font.format.toUpperCase()} · {formatFileSize(font.file_size)}</DialogDescription>
+          <DialogTitle className="flex items-center justify-between">
+            <span className="truncate">{font.family_name} - {font.style_name}</span>
+            <Badge variant="outline" className="ml-2 shrink-0">{font.format.toUpperCase()}</Badge>
+          </DialogTitle>
+          <DialogDescription>
+            {formatFileSize(font.file_size)} · 上传于 {new Date(font.created_at).toLocaleDateString('zh-CN')}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-auto py-4 space-y-4">
@@ -283,7 +271,7 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
               下载
             </a>
           </Button>
-          {showDelete && (
+          {isAdmin && (
             <Button variant="destructive" className="flex-1" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-2" />
               删除
@@ -291,24 +279,28 @@ export function FontPreview({ font, open, onClose, onDelete }: FontPreviewProps)
           )}
         </div>
         
-        {/* Hidden restore button - double-click title to reveal */}
-        <div 
-          className="pt-2 text-center" 
-          onDoubleClick={() => setShowRestore(!showRestore)}
-          style={{ cursor: 'default', userSelect: 'none' }}
-        >
-          <span className="text-xs text-gray-400">双击此处显示还原选项</span>
-        </div>
-        {showRestore && (
-          <div className="flex gap-2 pt-2">
-            <Button 
-              variant="outline" 
-              className="flex-1" 
-              onClick={handleRestore}
+        {/* Hidden restore button - only in admin mode */}
+        {isAdmin && (
+          <>
+            <div 
+              className="pt-2 text-center" 
+              onDoubleClick={() => setShowRestore(!showRestore)}
+              style={{ cursor: 'default', userSelect: 'none' }}
             >
-              还原到原始版本
-            </Button>
-          </div>
+              <span className="text-xs text-gray-400">双击此处显示还原选项</span>
+            </div>
+            {showRestore && (
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1" 
+                  onClick={handleRestore}
+                >
+                  还原到原始版本
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

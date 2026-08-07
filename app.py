@@ -675,6 +675,28 @@ def delete_tag(tag_id):
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/tags/<int:tag_id>", methods=["PUT"])
+def update_tag(tag_id):
+    data = request.get_json()
+    name = data.get("name")
+    color = data.get("color")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            return jsonify({"status": "error", "message": "Tag name cannot be empty"}), 400
+    try:
+        db.update_tag(tag_id, name, color)
+        # 返回更新后的标签
+        tags = db.get_all_tags()
+        updated_tag = next((t for t in tags if t["id"] == tag_id), None)
+        if updated_tag:
+            return jsonify({"status": "ok", "tag": updated_tag})
+        return jsonify({"status": "error", "message": "Tag not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+
 @app.route("/api/fonts/<int:font_id>/tags", methods=["GET"])
 def get_font_tags(font_id):
     tags = db.get_font_tags(font_id)

@@ -262,6 +262,25 @@ def delete_tag(tag_id):
     conn.close()
 
 
+def update_tag(tag_id, name=None, color=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    updates = []
+    params = []
+    if name is not None:
+        updates.append("name=?")
+        params.append(name)
+    if color is not None:
+        updates.append("color=?")
+        params.append(color)
+    if updates:
+        params.append(tag_id)
+        cursor.execute(f"UPDATE tags SET {', '.join(updates)} WHERE id=?", params)
+    conn.commit()
+    conn.close()
+
+
+
 def add_font_tag(font_id, tag_id):
     conn = get_connection()
     cursor = conn.cursor()
