@@ -66,10 +66,10 @@ function InlinePreview({ fontId, fontFormat }: { fontId: number; fontFormat: str
 
   return (
     <span 
-      className="text-lg whitespace-nowrap overflow-hidden text-ellipsis"
-      style={{ fontFamily: loaded ? `'${faceName}', sans-serif` : 'inherit' }}
+      
+      className="whitespace-nowrap overflow-hidden text-ellipsis" style={{ fontSize: "22px", fontFamily: loaded ? `'${faceName}', sans-serif` : 'inherit' }}
     >
-      预览 Preview 123
+      字体预览 FontPreview 123
     </span>
   )
 }
