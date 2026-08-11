@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { FontTable } from '@/components/FontTable'
 import { FontPreview } from '@/components/FontPreview'
@@ -18,6 +18,33 @@ function App() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([])
   const [showUploadResults, setShowUploadResults] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const konamiRef = useRef<number[]>([])
+  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
+
+  // Konami Code 监听 - 管理员模式切换
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      konamiRef.current.push(e.keyCode)
+      if (konamiRef.current.length > konamiCode.length) {
+        konamiRef.current.shift()
+      }
+      if (konamiRef.current.length === konamiCode.length && 
+          konamiRef.current.every((code, i) => code === konamiCode[i])) {
+        setIsAdmin(prev => {
+          const next = !prev
+          toast({
+            title: next ? '管理员模式已激活' : '管理员模式已关闭',
+            description: next ? '显示删除按钮和隐藏列' : '隐藏高级功能',
+          })
+          return next
+        })
+        konamiRef.current = []
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const loadFontTags = useCallback(async (fontIds: number[]) => {
     const newMap: Record<number, Tag[]> = {}
@@ -107,7 +134,7 @@ function App() {
         selectedTagId={selectedTagId}
         onTagSelect={setSelectedTagId}
         onUploadComplete={handleUploadComplete}
-        onTagsChange={loadTags}
+        onTagsChange={() => { loadTags(); loadFontTags(fonts.map(f => f.id)) }}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         {showUploadResults && (
@@ -124,6 +151,7 @@ function App() {
           tags={tags}
           fontTagsMap={fontTagsMap}
           selectedTagId={selectedTagId}
+          isAdmin={isAdmin}
           onFontSelect={handleFontSelect}
           onDelete={handleDelete}
           onTagsChange={() => { loadTags(); loadFontTags(fonts.map(f => f.id)) }}
@@ -134,6 +162,7 @@ function App() {
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         onDelete={handleDelete}
+        isAdmin={isAdmin}
       />
       <Toaster />
     </div>

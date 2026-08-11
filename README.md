@@ -4,7 +4,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/InsulateJustf/fontmanager/build.yml?branch=main&style=flat-square&label=main%20build)](https://github.com/InsulateJustf/fontmanager/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/InsulateJustf/fontmanager?style=flat-square&color=green)](https://github.com/InsulateJustf/fontmanager/releases/latest)
 
-供设计师团队使用的 Web 字体管理工具。支持拖拽上传、自动解析元数据、去重、重命名并入库，含 CJK 检测、TTC 子字体管理、字体预览、家族分组、多选下载等功能。
+供设计师团队使用的 Web 字体管理工具。支持拖拽上传、自动解析元数据、去重、重命名并入库，含 CJK 检测、TTC 子字体管理、字体预览、家族分组、多选下载、标签管理等功能。
 
 ## 功能
 
@@ -18,14 +18,18 @@
 - **CJK 检测** — 分析字体的中文支持情况（简体 / 繁体 / 日文 / 韩文），显示徽章和警告
 - **TTC 子字体管理** — 查看 TTC 内所有子字体，按区域（SC/TC/HK/JP/KR）分组显示，支持单独预览和下载
 - **字体预览** — 通过 @font-face 实时加载预览，支持自定义文字、字号滑块（12–120px），居中弹窗显示
+- **内联预览** — 字体表格中每行显示字体名称的实际渲染效果
 - **家族分组** — 同一家族的多个字重自动归组显示，可展开/收起查看各字重详情
 - **多选下载** — 勾选多个字体后一键打包下载 ZIP
+- **标签管理** — 创建、编辑、删除标签，支持颜色选择（预设 16 种颜色 + 自定义颜色选择器）
 - **批量标签** — 多选字体后可批量添加/删除标签
 - **按家族下载** — 一键打包同家族所有字重为 ZIP 下载
+- **语言筛选** — 支持多选语言筛选（简体中文/繁体中文/日文/韩文/英文）
 - **Windows 系统字体过滤** — 自动跳过 100+ 个 Windows 内置字体（含"微软雅黑"、"宋体"、"等线"等）
 - **打包下载** — 一键打包所有字体为 ZIP 下载
 - **启动自动扫描** — 服务启动时自动扫描字体存储目录，将未入库的字体自动导入
 - **删除二次确认** — 两次确认后才会执行删除，防止误删（需按科乐美密技显示删除按钮）
+- **管理员模式** — 通过科乐美密技（上上下下左右左右BA）激活，显示删除按钮和隐藏列（格式/大小）
 - **非标准命名修正** — 自动检测字重藏在 family 名中的字体（如 HomuraM 系列），修正元数据
 - **字体备份与还原** — 修改字体前自动备份原文件到 `fonts/backup/`，替换时也自动备份，支持手动还原到原始版本
 - **字形安全比对** — 修改字体后自动比对字形数据，确保无损坏，异常时自动还原
@@ -77,71 +81,10 @@ bash start.sh -s ~/MyFonts -p 9090
 > 
 > 本项目代码完全开源，不含任何恶意代码。误报原因是 PyInstaller bootloader 的特征码被 AV 厂商标记，以及未签名的可执行文件更容易触发启发式检测。
 
-可选：使用 [NSSM](https://nssm.cc/) 注册为 Windows 服务：
+## 环境变量
 
-```cmd
-nssm install FontManager "C:\path\to\FontManager.exe"
-nssm start FontManager
-```
-
-### GitHub Actions 自动构建
-
-- **main 分支** (`build.yml`): push / PR 到 main 或推送 `v*` tag 时自动触发，产物保留 90 天，tag 推送时自动创建 Release
-- **test 分支** (`build-test.yml`): 仅手动触发（workflow_dispatch），产物保留 30 天
-
-## 前端开发
-
-前端使用 React + Vite 构建，源码位于 `frontend/` 目录。
-
-```bash
-cd frontend
-npm install
-
-# 开发模式（自动 proxy API 到 Flask 8080 端口）
-npm run dev
-
-# 构建生产版本（输出到 static/）
-npm run build
-```
-
-### 布局
-
-```
-┌──────────────┬──────────────────────────────────────────┐
-│   侧边栏     │              主区域                       │
-│  (260px)     │                                          │
-│              │  [搜索框]  [筛选: 格式|语言|字重]          │
-│  📁 上传区    │  ┌──────────────────────────────────────┐│
-│  拖拽/选择    │  │ ☐ │ 字体名称  │ 样式  │ CJK │ 格式 │││
-│              │  │───│───────────│───────│─────│──────│││
-│  🔍 筛选器    │  │ ☐ │ 思源宋体 ▶│ 6个字重│ 简繁 │ TTC │││
-│  □ 格式筛选   │  │   │   Regular │       │ 简繁 │ TTC │││
-│  □ 语言筛选   │  │   │   Bold    │       │ 简繁 │ TTC │││
-│              │  └──────────────────────────────────────┘│
-│  🏷️ 标签     │  ┌──────────────────────────────────────┐│
-│  + 品牌字体   │  │ 已选择 3 个字体    [取消] [下载选中]  ││
-│  + 项目A字体  │  └──────────────────────────────────────┘│
-│              │                                          │
-│  📊 统计      │              ← 点击字体行 →               │
-│  共 N 个字体  │                           ┌─ 预览面板 ──┐│
-│  TTC/OTF/TTF │                           │ 字体预览     ││
-│              │                           │ 字号滑块     ││
-│  📦 打包下载  │                           │ 子字体选择   ││
-│              │                           │ CJK 信息     ││
-│              │                           │ [下载] [删除]││
-│              │                           └──────────────┘│
-└──────────────┴──────────────────────────────────────────┘
-```
-
-- 多字重家族自动归组，点击展开/收起查看各字重
-- 每行左侧复选框支持多选，表头全选按钮（三态）
-- 家族标题行带 📦 按钮，一键下载同家族全部字重 ZIP
-- TTC 子字体选择器按区域分组，标签显示 variant + weight（区分 Mono 等变体）
-
-## 配置
-
-| 环境变量 | 说明 | 默认值 |
-|---------|------|--------|
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
 | `FONT_STORAGE` | 字体存储目录 | Windows: `C:\ProgramData\FontManager\fonts\`，其他: `./fonts/` |
 | `FONT_PORT` | 服务端口 | `8080` |
 | `FONT_HOST` | 监听地址 | `0.0.0.0` |
@@ -157,16 +100,26 @@ python app.py --port 9090 --storage /path/to/fonts
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 前端页面 |
-| POST | `/api/upload` | 批量上传字体 |
+| POST | `/api/upload` | 批量上传字体（TTC 优先处理） |
 | GET | `/api/fonts` | 字体列表 |
-| GET | `/api/fonts/<id>/file` | 预览/下载字体文件（`?download=1` 下载，`?subfont=N` 提取 TTC 子字体） |
+| GET | `/api/fonts/<id>/file` | 预览字体文件；`?download=1` 下载；`?subfont=N` 提取 TTC 子字体 |
 | GET | `/api/fonts/<id>/subfonts` | TTC 子字体列表（带缓存） |
 | GET | `/api/fonts/<id>/cjk` | CJK 支持信息（带缓存，`?subfont=N` 检测特定子字体） |
 | DELETE | `/api/fonts/<id>` | 删除字体（文件 + 记录，需二次确认） |
+| POST | `/api/fonts/<id>/restore` | 还原字体到备份版本 |
 | GET | `/api/fonts/download-all` | 打包下载全部字体（ZIP） |
 | GET | `/api/fonts/download-family` | 按家族下载 ZIP（`?name=<family_name>`） |
 | POST | `/api/fonts/download-selected` | 多选下载 ZIP（body: `{ids: number[]}`） |
-| POST | `/api/fonts/<id>/restore` | 还原字体到备份版本 |
+| GET | `/api/tags` | 标签列表 |
+| POST | `/api/tags` | 创建标签 |
+| DELETE | `/api/tags/<id>` | 删除标签 |
+| PUT | `/api/tags/<id>` | 更新标签（名称/颜色） |
+| GET | `/api/fonts/<id>/tags` | 字体的标签列表 |
+| POST | `/api/fonts/<id>/tags` | 为字体添加标签 |
+| DELETE | `/api/fonts/<id>/tags/<tag_id>` | 从字体删除标签 |
+| POST | `/api/fonts/batch/tags` | 批量添加标签（body: `{font_ids: number[], tag_id: number}`） |
+| DELETE | `/api/fonts/batch/tags` | 批量删除标签（body: `{font_ids: number[], tag_id: number}`） |
+| GET | `/api/version` | 获取当前版本信息（分支+commit id） |
 
 ## 项目结构
 
@@ -212,15 +165,16 @@ fontmanager/
 ## 上传流程
 
 ```
-接收文件 → 逐个处理:
+接收文件 → 按格式优先级排序（TTC > OTF > TTF）→ 逐个处理:
   1. 检查扩展名（.ttf/.otf/.ttc）
   2. 解析字体元数据（family_name, style_name）
-  3. cmap 指纹检测 + 非标准命名修正
+  3. cmap 指纹检测 + 非标准命名修正（TTF/OTF）
   4. 过滤 Windows 系统内置字体
-  5. 查重：已存在且旧的更完整 → 跳过；新的更完整 → 替换
-  6. 生成规范文件名，按家族名存储（扁平或子目录）
-  7. 计算 SHA256 + CJK 检测 + TTC 子字体解析
-  8. 写入数据库
+  5. TTC 覆盖检测（OTF/TTF 是否已被 TTC 覆盖）
+  6. 查重：已存在且旧的更完整 → 跳过；新的更完整 → 备份+替换
+  7. 生成规范文件名，按家族名存储（扁平或子目录）
+  8. 计算 SHA256 + CJK 检测 + TTC 子字体解析
+  9. 写入数据库（含 cmap_fingerprint）
 ```
 
 ## 数据库
@@ -244,6 +198,32 @@ SQLite 表 `fonts`：
 | created_at | TIMESTAMP | 入库时间 |
 
 唯一约束：`(family_name, style_name)`
+
+SQLite 表 `tags`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 ID |
+| name | TEXT | 标签名称（UNIQUE） |
+| color | TEXT | 标签颜色（默认 #6b7280） |
+| created_at | TIMESTAMP | 创建时间 |
+
+SQLite 表 `font_tags`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| font_id | INTEGER | 字体 ID（外键） |
+| tag_id | INTEGER | 标签 ID（外键） |
+
+主键：`(font_id, tag_id)`，级联删除。
+
+## 前端功能
+
+- **侧边栏** — 拖拽上传区、文件/文件夹选择按钮（支持累加多文件夹）、标签管理（创建/编辑/删除标签，支持颜色选择）、统计信息、打包下载按钮、版本号显示
+- **字体表格** — 家族分组显示、多选复选框、搜索框、格式/语言筛选（支持多选）、列排序、分页、内联预览、批量操作栏
+- **字体预览** — @font-face 实时加载、TTC 子字体选择器（按区域分组）、自定义预览文字、字号滑块、CJK 警告、删除/还原操作
+- **上传结果** — 逐条显示状态图标（✅成功 / ⚠️重复 / ⏭️跳过系统字体 / ❌失败）
+- **管理员模式** — 科乐美密技（上上下下左右左右BA）激活，显示删除按钮和隐藏列
 
 ## 开发约定
 

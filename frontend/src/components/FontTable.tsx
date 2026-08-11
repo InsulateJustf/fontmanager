@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Table,
   TableBody,
@@ -25,9 +25,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
-import { Eye, Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package, Check } from 'lucide-react'
+import { Download, Trash2, Search, ArrowUpDown, Plus, X, ChevronDown, ChevronRight, Package, Check } from 'lucide-react'
 import type { Font, CJKInfo, Tag as TagType } from '@/lib/api'
-import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts, downloadSelectedFonts, batchAddTagToFonts, batchRemoveTagFromFonts } from '@/lib/api'
+import { deleteFont, getFontFileUrl, formatFileSize, addTagToFont, removeTagFromFont, downloadFamilyFonts, downloadSelectedFonts, batchAddTagToFonts, batchRemoveTagFromFonts, createTag } from '@/lib/api'
 
 interface FontTableProps {
   fonts: Font[]
@@ -35,13 +35,44 @@ interface FontTableProps {
   tags: TagType[]
   fontTagsMap: Record<number, TagType[]>
   selectedTagId: number | null
+  isAdmin: boolean
   onFontSelect: (font: Font) => void
   onDelete: (fontId: number) => void
   onTagsChange: () => void
 }
 
-type SortField = 'family_name' | 'style_name' | 'format' | 'file_size'
+type SortField = 'family_name' | 'format' | 'file_size'
 type SortDirection = 'asc' | 'desc'
+
+// 内联预览组件
+function InlinePreview({ fontId, fontFormat }: { fontId: number; fontFormat: string }) {
+  const [loaded, setLoaded] = useState(false)
+  const faceName = `InlinePreview_${fontId}`
+
+  useEffect(() => {
+    const url = getFontFileUrl(fontId)
+    const formatMap: Record<string, string> = { ttf: 'truetype', otf: 'opentype', ttc: 'truetype' }
+    const fontFormatStr = formatMap[fontFormat] || 'opentype'
+    
+    const style = document.createElement('style')
+    style.textContent = `@font-face { font-family: '${faceName}'; src: url('${url}') format('${fontFormatStr}'); }`
+    document.head.appendChild(style)
+    setLoaded(true)
+    
+    return () => {
+      style.remove()
+    }
+  }, [fontId, fontFormat])
+
+  return (
+    <span 
+      
+      className="whitespace-nowrap overflow-hidden text-ellipsis" style={{ fontSize: "22px", fontFamily: loaded ? `'${faceName}', sans-serif` : 'inherit' }}
+    >
+      字体预览 FontPreview 123
+    </span>
+  )
+}
 
 export function FontTable({
   fonts,
@@ -49,13 +80,14 @@ export function FontTable({
   tags,
   fontTagsMap,
   selectedTagId,
+  isAdmin,
   onFontSelect,
   onDelete,
   onTagsChange,
 }: FontTableProps) {
   const [search, setSearch] = useState('')
   const [formatFilter, setFormatFilter] = useState<string>('all')
-  const [langFilter, setLangFilter] = useState<string>('all')
+  const [langFilters, setLangFilters] = useState<Set<string>>(new Set(['all']))
   const [sortField, setSortField] = useState<SortField>('family_name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
@@ -66,70 +98,96 @@ export function FontTable({
   const [showBatchTagSelect, setShowBatchTagSelect] = useState(false)
   const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove'>('add')
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
-  const [showDelete, setShowDelete] = useState(false)
-  const konamiRef = useRef<number[]>([])
-  const konamiCode = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65] // 上上下下左右左右BA
+  const [showLangFilter, setShowLangFilter] = useState(false)
   const batchTagRef = useRef<HTMLDivElement>(null)
+  
+  // 快速创建标签相关状态
+  const [newTagName, setNewTagName] = useState('')
 
+  const tagSelectRef = useRef<HTMLDivElement>(null)
 
+  // 判断是否为中文字体
+  const isChineseFont = (familyName: string) => /[\u4e00-\u9fff]/.test(familyName)
 
   // Filter
-  const filtered = fonts.filter((font) => {
-    const matchesSearch =
-      font.family_name.toLowerCase().includes(search.toLowerCase()) ||
-      font.style_name.toLowerCase().includes(search.toLowerCase())
-    const matchesFormat = formatFilter === 'all' || font.format === formatFilter
-    const cjk = cjkInfoMap[font.id]
-    let matchesLang = true
-    if (langFilter !== 'all' && cjk) {
-      switch (langFilter) {
-        case 'sc': matchesLang = cjk.supports_sc; break
-        case 'tc': matchesLang = cjk.supports_tc; break
-        case 'ja': matchesLang = cjk.supports_ja; break
-        case 'ko': matchesLang = cjk.supports_ko; break
-        case 'none': matchesLang = !cjk.has_cjk; break
+  const filtered = useMemo(() => {
+    return fonts.filter((font) => {
+      const matchesSearch =
+        font.family_name.toLowerCase().includes(search.toLowerCase()) ||
+        font.style_name.toLowerCase().includes(search.toLowerCase())
+      const matchesFormat = formatFilter === 'all' || font.format === formatFilter
+      const cjk = cjkInfoMap[font.id]
+      let matchesLang = true
+      if (!langFilters.has('all') && cjk) {
+        matchesLang = false
+        if (langFilters.has('sc') && cjk.supports_sc) matchesLang = true
+        if (langFilters.has('tc') && cjk.supports_tc) matchesLang = true
+        if (langFilters.has('ja') && cjk.supports_ja) matchesLang = true
+        if (langFilters.has('ko') && cjk.supports_ko) matchesLang = true
+        if (langFilters.has('none') && !cjk.has_cjk) matchesLang = true
+      } else if (!langFilters.has('all') && !cjk) {
+        matchesLang = langFilters.has('none')
       }
-    }
-    // Tag filtering
-    let matchesTag = true
-    if (selectedTagId !== null) {
-      const fontTags = fontTagsMap[font.id] || []
-      matchesTag = fontTags.some(t => t.id === selectedTagId)
-    }
-    return matchesSearch && matchesFormat && matchesLang && matchesTag
-  })
+      // Tag filtering
+      let matchesTag = true
+      if (selectedTagId !== null) {
+        const fontTags = fontTagsMap[font.id] || []
+        matchesTag = fontTags.some(t => t.id === selectedTagId)
+      }
+      return matchesSearch && matchesFormat && matchesLang && matchesTag
+    })
+  }, [fonts, search, formatFilter, langFilters, selectedTagId, cjkInfoMap, fontTagsMap])
 
-  // Sort
-  const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0
-    switch (sortField) {
-      case 'family_name':
-        cmp = a.family_name.localeCompare(b.family_name)
-        break
-      case 'style_name':
-        cmp = a.style_name.localeCompare(b.style_name)
-        break
-      case 'format':
-        cmp = a.format.localeCompare(b.format)
-        break
-      case 'file_size':
-        cmp = a.file_size - b.file_size
-        break
-    }
-    return sortDirection === 'asc' ? cmp : -cmp
-  })
+  // Sort - 先英后中
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      // 先按语言分类：英文在前，中文在后
+      const aIsChinese = isChineseFont(a.family_name)
+      const bIsChinese = isChineseFont(b.family_name)
+      
+      if (aIsChinese !== bIsChinese) {
+        return aIsChinese ? 1 : -1 // 英文在前
+      }
+      
+      // 同一类别内按排序字段排序
+      let cmp = 0
+      switch (sortField) {
+        case 'family_name':
+          cmp = a.family_name.localeCompare(b.family_name)
+          break
+        case 'format':
+          cmp = a.format.localeCompare(b.format)
+          break
+        case 'file_size':
+          cmp = a.file_size - b.file_size
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+  }, [filtered, sortField, sortDirection])
 
   // Group sorted fonts by family_name for display
-  const familyGroups: { family: string; fonts: Font[]; hasMultiple: boolean }[] = []
-  const familyMap = new Map<string, Font[]>()
-  for (const font of sorted) {
-    const key = font.family_name
-    if (!familyMap.has(key)) familyMap.set(key, [])
-    familyMap.get(key)!.push(font)
-  }
-  for (const [family, groupFonts] of familyMap) {
-    familyGroups.push({ family, fonts: groupFonts, hasMultiple: groupFonts.length > 1 })
-  }
+  const familyGroups = useMemo(() => {
+    const groups: { family: string; fonts: Font[]; hasMultiple: boolean }[] = []
+    const familyMap = new Map<string, Font[]>()
+    for (const font of sorted) {
+      const key = font.family_name
+      if (!familyMap.has(key)) familyMap.set(key, [])
+      familyMap.get(key)!.push(font)
+    }
+    for (const [family, groupFonts] of familyMap) {
+      groups.push({ family, fonts: groupFonts, hasMultiple: groupFonts.length > 1 })
+    }
+    return groups
+  }, [sorted])
+
+  // 默认展开所有多字重家族
+  useEffect(() => {
+    const multiFamilies = familyGroups
+      .filter(g => g.hasMultiple)
+      .map(g => g.family)
+    setExpandedFamilies(new Set(multiFamilies))
+  }, [familyGroups])
 
   // Paginate at family group level
   const totalGroups = familyGroups.length
@@ -145,55 +203,33 @@ export function FontTable({
     }
   }
 
-  const toggleFamily = (family: string) => {
-    setExpandedFamilies((prev) => {
+  const toggleSelect = (fontId: number) => {
+    setSelectedIds(prev => {
       const next = new Set(prev)
-      if (next.has(family)) next.delete(family)
-      else next.add(family)
-      return next
-    })
-  }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const toggleSelectFamily = (familyFonts: Font[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      const allSelected = familyFonts.every(f => next.has(f.id))
-      if (allSelected) {
-        familyFonts.forEach(f => next.delete(f.id))
-      } else {
-        familyFonts.forEach(f => next.add(f.id))
-      }
+      if (next.has(fontId)) next.delete(fontId)
+      else next.add(fontId)
       return next
     })
   }
 
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => {
-      const allFilteredIds = sorted.map(f => f.id)
-      const allSelected = allFilteredIds.every(id => prev.has(id))
-      if (allSelected) return new Set()
-      return new Set(allFilteredIds)
-    })
+    if (sorted.length > 0 && sorted.every(f => selectedIds.has(f.id))) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(sorted.map(f => f.id)))
+    }
   }
 
-  const selectedCount = selectedIds.size
-
-  const handleDownloadSelected = async () => {
-    if (selectedIds.size === 0) return
-    try {
-      await downloadSelectedFonts(Array.from(selectedIds))
-    } catch (err) {
-      console.error('Download failed:', err)
-    }
+  const toggleSelectFamily = (fonts: Font[]) => {
+    const allSelected = fonts.every(f => selectedIds.has(f.id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      fonts.forEach(f => {
+        if (allSelected) next.delete(f.id)
+        else next.add(f.id)
+      })
+      return next
+    })
   }
 
   const handleBatchAddTag = async () => {
@@ -233,22 +269,20 @@ export function FontTable({
     })
   }
 
-  // Konami code to show delete buttons
+  // Close language filter dropdown when clicking outside
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      konamiRef.current.push(e.keyCode)
-      if (konamiRef.current.length > konamiCode.length) {
-        konamiRef.current.shift()
-      }
-      if (konamiRef.current.length === konamiCode.length && 
-          konamiRef.current.every((code, i) => code === konamiCode[i])) {
-        setShowDelete(true)
-        konamiRef.current = []
-      }
+    if (!showLangFilter) return
+    const handleClickOutside = (_e: MouseEvent) => {
+      setShowLangFilter(false)
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showLangFilter])
 
   // Close batch tag dropdown when clicking outside
   useEffect(() => {
@@ -259,7 +293,6 @@ export function FontTable({
         setSelectedTagIds(new Set())
       }
     }
-    // Use setTimeout to avoid the opening click from triggering this handler
     const timer = setTimeout(() => {
       document.addEventListener('click', handleClickOutside)
     }, 0)
@@ -282,15 +315,14 @@ export function FontTable({
 
   const renderCJKBadges = (font: Font) => {
     const cjk = cjkInfoMap[font.id]
-    if (!cjk) return <Badge variant="outline">检测中...</Badge>
-    if (!cjk.has_cjk) return <Badge variant="secondary">英</Badge>
+    if (!cjk) return <Badge variant="outline" className="text-xs">...</Badge>
+    if (!cjk.has_cjk) return <Badge variant="secondary" className="text-xs">英</Badge>
+    const hasChinese = cjk.supports_sc || cjk.supports_tc
     return (
-      <div className="flex gap-1 flex-wrap justify-center">
-        {cjk.supports_sc && <Badge className="bg-green-100 text-green-800 hover:bg-green-200">简</Badge>}
-        {cjk.supports_tc && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">繁</Badge>}
-        {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200">日</Badge>}
-        {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">韩</Badge>}
-
+      <div className="grid grid-cols-2 gap-0.5 justify-items-center w-fit mx-auto">
+        {hasChinese && <Badge className="bg-green-100 text-green-800 hover:bg-green-200 text-xs px-1 py-0 h-5">中</Badge>}
+        {cjk.supports_ja && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 text-xs px-1 py-0 h-5">日</Badge>}
+        {cjk.supports_ko && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs px-1 py-0 h-5">韩</Badge>}
       </div>
     )
   }
@@ -314,16 +346,55 @@ export function FontTable({
     }
   }
 
+  // 快速创建标签
+  const handleQuickCreateTag = async (fontId: number) => {
+    if (!newTagName.trim()) return
+    try {
+      const newTag = await createTag(newTagName.trim(), '#6b7280')
+      await addTagToFont(fontId, newTag.id)
+      setNewTagName('')
+      onTagsChange()
+    } catch (err) {
+      console.error('Quick create tag failed:', err)
+    }
+  }
+
+  // 处理标签选择区域的焦点管理
+  useEffect(() => {
+    if (tagFontId === null) return
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagSelectRef.current && !tagSelectRef.current.contains(e.target as Node)) {
+        setTagFontId(null)
+      }
+    }
+    
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 100)
+    
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [tagFontId])
+
   const renderTags = (font: Font) => {
     const fontTags = fontTagsMap[font.id] || []
     const availableTags = tags.filter(t => !fontTags.some(ft => ft.id === t.id))
+    const isTagSelectOpen = tagFontId === font.id
+
     return (
-      <div className="flex flex-wrap gap-1 justify-center items-center">
+      <div 
+        ref={isTagSelectOpen ? tagSelectRef : undefined}
+        className="flex flex-col gap-1 justify-center items-start min-w-[120px]"
+      >
         {fontTags.map(tag => (
           <Badge
             key={tag.id}
             variant="outline"
             className="text-xs cursor-pointer group"
+            style={{ backgroundColor: tag.color ? `${tag.color}20` : undefined, borderColor: tag.color }}
             title="点击移除"
             onClick={(e) => {
               e.stopPropagation()
@@ -334,21 +405,50 @@ export function FontTable({
             <X className="h-3 w-3 ml-0.5 opacity-0 group-hover:opacity-100" />
           </Badge>
         ))}
-        {tagFontId === font.id ? (
-          <select
-            className="text-xs border rounded px-1 py-0.5"
-            autoFocus
-            onBlur={() => setTagFontId(null)}
-            onChange={(e) => {
-              if (e.target.value) handleAddTag(font.id, Number(e.target.value))
-            }}
+        {isTagSelectOpen ? (
+          <div 
+            className="w-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <option value="">选择标签...</option>
-            {availableTags.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
+            <select
+              className="text-xs border rounded px-1 py-0.5 w-full"
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleAddTag(font.id, Number(e.target.value))
+                  setTagFontId(null)
+                }
+              }}
+            >
+              <option value="">选择标签...</option>
+              {availableTags.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <div className="flex gap-1 mt-1">
+              <Input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                placeholder="快速创建..."
+                className="h-6 text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleQuickCreateTag(font.id)
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleQuickCreateTag(font.id)
+                }}
+              >
+                +
+              </Button>
+            </div>
+          </div>
         ) : (
           <Button
             variant="ghost"
@@ -357,6 +457,7 @@ export function FontTable({
             onClick={(e) => {
               e.stopPropagation()
               setTagFontId(font.id)
+              setNewTagName('')
             }}
           >
             <Plus className="h-3 w-3" />
@@ -382,42 +483,75 @@ export function FontTable({
             className="pl-8"
           />
         </div>
-        <Select
-          value={formatFilter}
-          onValueChange={(v) => {
-            setFormatFilter(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[100px]">
-            <SelectValue placeholder="格式" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部格式</SelectItem>
-            <SelectItem value="ttc">TTC</SelectItem>
-            <SelectItem value="otf">OTF</SelectItem>
-            <SelectItem value="ttf">TTF</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
-          value={langFilter}
-          onValueChange={(v) => {
-            setLangFilter(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[100px]">
-            <SelectValue placeholder="语言" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部语言</SelectItem>
-            <SelectItem value="sc">简体中文</SelectItem>
-            <SelectItem value="tc">繁体中文</SelectItem>
-            <SelectItem value="ja">日文</SelectItem>
-            <SelectItem value="ko">韩文</SelectItem>
-            <SelectItem value="none">英</SelectItem>
-          </SelectContent>
-        </Select>
+        {isAdmin && (
+          <Select
+            value={formatFilter}
+            onValueChange={(v) => {
+              setFormatFilter(v)
+              setCurrentPage(1)
+            }}
+          >
+            <SelectTrigger className="w-[100px]">
+              <SelectValue placeholder="格式" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部格式</SelectItem>
+              <SelectItem value="ttc">TTC</SelectItem>
+              <SelectItem value="otf">OTF</SelectItem>
+              <SelectItem value="ttf">TTF</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => setShowLangFilter(!showLangFilter)}
+          >
+            语言 {langFilters.has('all') ? '全部' : `已选${langFilters.size}`}
+          </Button>
+          {showLangFilter && (
+            <div className="absolute top-full left-0 mt-1 bg-white border rounded-md shadow-lg z-50 p-2 min-w-[120px]">
+              {[
+                { value: 'all', label: '全部' },
+                { value: 'sc', label: '简体中文' },
+                { value: 'tc', label: '繁体中文' },
+                { value: 'ja', label: '日文' },
+                { value: 'ko', label: '韩文' },
+                { value: 'none', label: '英' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-100 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={langFilters.has(opt.value)}
+                    onChange={() => {
+                      setLangFilters(prev => {
+                        const next = new Set(prev)
+                        if (opt.value === 'all') {
+                          return new Set(['all'])
+                        }
+                        next.delete('all')
+                        if (next.has(opt.value)) next.delete(opt.value)
+                        else next.add(opt.value)
+                        if (next.size === 0) return new Set(['all'])
+                        return next
+                      })
+                      setCurrentPage(1)
+                    }}
+                    className="rounded"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        {isAdmin && (
+          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+            管理员模式
+          </Badge>
+        )}
       </div>
 
       {/* Table */}
@@ -425,7 +559,7 @@ export function FontTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10 text-center">
+              <TableHead className="w-8 text-center">
                 <button
                   className="inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors"
                   onClick={toggleSelectAll}
@@ -438,39 +572,38 @@ export function FontTable({
                   ) : null}
                 </button>
               </TableHead>
-              <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('family_name')}>
-                <div className="flex items-center justify-center gap-1">
+              <TableHead className="text-center">
+                <div className="flex items-center justify-center gap-1 cursor-pointer" onClick={() => toggleSort('family_name')}>
                   字体名称
-                  <ArrowUpDown className="h-4 w-4" />
+                  <ArrowUpDown className="h-3 w-3" />
                 </div>
               </TableHead>
-              <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('style_name')}>
-                <div className="flex items-center justify-center gap-1">
-                  样式
-                  <ArrowUpDown className="h-4 w-4" />
-                </div>
-              </TableHead>
-              <TableHead className="text-center">标签</TableHead>
-              <TableHead className="text-center">语言支持</TableHead>
-              <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('format')}>
-                <div className="flex items-center justify-center gap-1">
-                  格式
-                  <ArrowUpDown className="h-4 w-4" />
-                </div>
-              </TableHead>
-              <TableHead className="cursor-pointer text-center" onClick={() => toggleSort('file_size')}>
-                <div className="flex items-center justify-center gap-1">
-                  大小
-                  <ArrowUpDown className="h-4 w-4" />
-                </div>
-              </TableHead>
-              <TableHead className="text-center">操作</TableHead>
+              <TableHead className="text-center">预览</TableHead>
+              <TableHead className="w-14 text-center">语言</TableHead>
+              <TableHead className="w-20 text-center">标签</TableHead>
+              {isAdmin && (
+                <>
+                  <TableHead className="w-16 cursor-pointer text-center" onClick={() => toggleSort('format')}>
+                    <div className="flex items-center justify-center gap-1">
+                      格式
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-20 cursor-pointer text-center" onClick={() => toggleSort('file_size')}>
+                    <div className="flex items-center justify-center gap-1">
+                      大小
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                </>
+              )}
+              <TableHead className="w-16 text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedGroups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
+                <TableCell colSpan={isAdmin ? 8 : 6} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
                   暂无字体
                 </TableCell>
               </TableRow>
@@ -497,29 +630,30 @@ export function FontTable({
                             ) : null}
                           </button>
                         </TableCell>
-                        <TableCell className="font-medium text-center">
-                          <button
-                            className="inline-flex items-center gap-1 hover:underline"
-                            onClick={(e) => { e.stopPropagation(); toggleFamily(group.family) }}
-                          >
-                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            {group.family}
-                            <Badge variant="secondary" className="ml-1 text-xs">{group.fonts.length}</Badge>
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline">{group.fonts.length} 个字重</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">{renderTags(group.fonts[0])}</TableCell>
-                        <TableCell className="text-center">{renderCJKBadges(group.fonts[0])}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex gap-1 justify-center">
-                            {[...new Set(group.fonts.map(f => f.format))].map(f => (
-                              <Badge key={f} variant="outline">{f.toUpperCase()}</Badge>
-                            ))}
+                        <TableCell className="font-medium text-center w-[220px] max-w-[220px] overflow-hidden">
+                          <div className="flex items-center justify-center gap-1">
+                            {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setExpandedFamilies(prev => { const next = new Set(prev); if (next.has(group.family)) next.delete(group.family); else next.add(group.family); return next; }) }} /> : <ChevronRight className="h-4 w-4 shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setExpandedFamilies(prev => { const next = new Set(prev); if (next.has(group.family)) next.delete(group.family); else next.add(group.family); return next; }) }} />}
+                            <span className="truncate cursor-pointer hover:text-[hsl(var(--primary))]" onClick={() => onFontSelect(group.fonts[0])}>{group.family}</span>
+                            <Badge variant="secondary" className="ml-1 shrink-0">{group.fonts.length} 个字重</Badge>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">{formatFileSize(totalSize)}</TableCell>
+                        <TableCell className="text-center">
+                          <InlinePreview fontId={group.fonts[0].id} fontFormat={group.fonts[0].format} />
+                        </TableCell>
+                        <TableCell className="text-center">{renderCJKBadges(group.fonts[0])}</TableCell>
+                        <TableCell className="text-center">{renderTags(group.fonts[0])}</TableCell>
+                        {isAdmin && (
+                          <>
+                            <TableCell className="text-center">
+                              <div className="flex gap-1 justify-center">
+                                {[...new Set(group.fonts.map(f => f.format))].map(f => (
+                                  <Badge key={f} variant="outline">{f.toUpperCase()}</Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">{formatFileSize(totalSize)}</TableCell>
+                          </>
+                        )}
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button
@@ -543,38 +677,30 @@ export function FontTable({
                       >
                         <TableCell className="text-center">
                           <button
-                            className={`inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors ${showHeader ? '' : ''}`}
+                            className="inline-flex items-center justify-center w-5 h-5 rounded border border-[hsl(var(--input))] hover:border-[hsl(var(--primary))] transition-colors"
                             onClick={(e) => { e.stopPropagation(); toggleSelect(font.id) }}
                           >
                             {selectedIds.has(font.id) && <Check className="h-3 w-3" />}
                           </button>
                         </TableCell>
-                        <TableCell className={`font-medium text-center ${showHeader ? 'pl-8' : ''}`}>
-                          {!showHeader && font.family_name}
+                        <TableCell className={`font-medium text-center w-[220px] max-w-[220px] overflow-hidden ${showHeader ? 'pl-8' : ''}`}>
+                          {showHeader ? <span className="truncate block text-sm text-muted-foreground">{font.style_name}</span> : <span className="truncate block">{font.family_name}</span>}
                         </TableCell>
                         <TableCell className="text-center">
-                          {font.format === 'ttc' ? (
-                            <Badge variant="secondary">多样式</Badge>
-                          ) : (
-                            font.style_name
-                          )}
+                          <InlinePreview fontId={font.id} fontFormat={font.format} />
                         </TableCell>
-                        <TableCell className="text-center">{renderTags(font)}</TableCell>
                         <TableCell className="text-center">{renderCJKBadges(font)}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline">{font.format.toUpperCase()}</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">{formatFileSize(font.file_size)}</TableCell>
+                        <TableCell className="text-center">{renderTags(font)}</TableCell>
+                        {isAdmin && (
+                          <>
+                            <TableCell className="text-center">
+                              <Badge variant="outline">{font.format.toUpperCase()}</Badge>
+                            </TableCell>
+                            <TableCell className="text-center">{formatFileSize(font.file_size)}</TableCell>
+                          </>
+                        )}
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => onFontSelect(font)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -585,7 +711,7 @@ export function FontTable({
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-                            {showDelete && (
+                            {isAdmin && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -607,17 +733,27 @@ export function FontTable({
         </Table>
       </div>
 
-      {/* Selection action bar */}
-      {selectedCount > 0 && (
-        <div className="mt-3 flex items-center justify-between bg-[hsl(var(--card))] border rounded-lg px-4 py-2">
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            已选择 {selectedCount} 个字体
-          </p>
-          <div className="flex gap-2 items-center" ref={batchTagRef}>
-            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+      {/* Batch actions */}
+      {selectedIds.size > 0 && (
+        <div className="mt-4 p-3 bg-muted/50 rounded-lg flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">已选择 {selectedIds.size} 个字体</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
               取消选择
             </Button>
-            <Button size="sm" onClick={handleDownloadSelected}>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap" ref={batchTagRef}>
+            <Button
+              size="sm"
+              onClick={async () => {
+                const ids = Array.from(selectedIds)
+                await downloadSelectedFonts(ids)
+              }}
+            >
               <Download className="h-4 w-4 mr-1" />
               下载选中
             </Button>
