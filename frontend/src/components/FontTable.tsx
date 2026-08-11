@@ -579,8 +579,8 @@ export function FontTable({
                 </div>
               </TableHead>
               <TableHead className="text-center">预览</TableHead>
-              <TableHead className="w-20 text-center">标签</TableHead>
               <TableHead className="w-14 text-center">语言</TableHead>
+              <TableHead className="w-20 text-center">标签</TableHead>
               {isAdmin && (
                 <>
                   <TableHead className="w-16 cursor-pointer text-center" onClick={() => toggleSort('format')}>
@@ -640,8 +640,8 @@ export function FontTable({
                         <TableCell className="text-center">
                           <InlinePreview fontId={group.fonts[0].id} fontFormat={group.fonts[0].format} />
                         </TableCell>
-                        <TableCell className="text-center">{renderTags(group.fonts[0])}</TableCell>
                         <TableCell className="text-center">{renderCJKBadges(group.fonts[0])}</TableCell>
+                        <TableCell className="text-center">{renderTags(group.fonts[0])}</TableCell>
                         {isAdmin && (
                           <>
                             <TableCell className="text-center">
@@ -689,8 +689,8 @@ export function FontTable({
                         <TableCell className="text-center">
                           <InlinePreview fontId={font.id} fontFormat={font.format} />
                         </TableCell>
-                        <TableCell className="text-center">{renderTags(font)}</TableCell>
                         <TableCell className="text-center">{renderCJKBadges(font)}</TableCell>
+                        <TableCell className="text-center">{renderTags(font)}</TableCell>
                         {isAdmin && (
                           <>
                             <TableCell className="text-center">
