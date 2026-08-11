@@ -134,7 +134,7 @@ function App() {
         selectedTagId={selectedTagId}
         onTagSelect={setSelectedTagId}
         onUploadComplete={handleUploadComplete}
-        onTagsChange={loadTags}
+        onTagsChange={() => { loadTags(); loadFontTags(fonts.map(f => f.id)) }}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         {showUploadResults && (
